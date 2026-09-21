@@ -87,8 +87,12 @@ export async function previewDesignArtifact(
   artifact: Pick<DesignArtifact, 'root' | 'manifestPath'>,
   host: ArtifactActionHost,
 ): Promise<DesignPreviewOutcome> {
-  const placement = await host.openView({ type: 'geode-artifact', state: { root: artifact.root } });
-  if (placement !== 'unavailable') return { status: 'opened' };
+  // Obsidian's missing-plugin placeholder preserves the requested view type,
+  // so successful placement alone cannot establish that a preview loaded.
+  if (typeof geodeHost()?.captureArtifact === 'function') {
+    const placement = await host.openView({ type: 'geode-artifact', state: { root: artifact.root } });
+    if (placement !== 'unavailable') return { status: 'opened' };
+  }
   const revealed = await host.revealInFolder(artifact.manifestPath);
   if (revealed) {
     return { status: 'source-revealed', warning: DESIGN_SOURCE_REVEALED_WARNING };

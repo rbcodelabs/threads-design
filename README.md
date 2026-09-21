@@ -7,6 +7,8 @@ Desktop-only peer plugin that adds static UI design artifacts to Agent Threads.
 - Agent Threads with public API v1 and the `threads.beginProvisional` capability
 - Obsidian or Geode desktop with a local filesystem vault
 
+Interactive preview and screenshot capture require Geode's artifact runtime. In Obsidian, Preview reveals the artifact source in the file manager instead.
+
 Enable Agent Threads first, then enable **Design for Agent Threads**. The plugin registers:
 
 - `/design <brief>` in existing-thread and new-thread composers
