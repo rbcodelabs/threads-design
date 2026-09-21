@@ -4,7 +4,7 @@ Desktop-only peer plugin that adds static UI design artifacts to Agent Threads.
 
 ## Requirements
 
-- Agent Threads with public API v1 and the `threads.beginProvisional` capability
+- Agent Threads v0.43.0 or later, with public API v1 and the `threads.beginProvisional` capability
 - Obsidian or Geode desktop with a local filesystem vault
 
 Interactive preview and screenshot capture require Geode's artifact runtime. In Obsidian, Preview reveals the artifact source in the file manager instead.
@@ -16,6 +16,17 @@ Enable Agent Threads first, then enable **Design for Agent Threads**. The plugin
 - presentation, preview, capture, and source-reveal actions for `design-static` artifacts
 
 Artifacts use host-allocated storage beneath `.geode/artifacts/`. A failed new-thread preparation rolls back both the provisional thread and allocated storage. Once preparation commits, a later agent-session failure keeps the artifact intact and is reported to the user.
+
+## Installation
+
+This repository is private; downloading releases requires repository access.
+
+1. Download `main.js` and `manifest.json` from the [v0.1.0 release](https://github.com/rbcodelabs/threads-design/releases/tag/v0.1.0).
+2. Put both files in `<vault>/.geode/plugins/threads-design/` for Geode, or `<vault>/.obsidian/plugins/threads-design/` for Obsidian.
+3. Update and enable Agent Threads first, then enable **Design for Agent Threads** in the host's plugin settings. Restart the host if the new plugin is not listed.
+4. Start a new conversation and submit `/design a simple settings page` to check the installation. Geode opens the interactive preview; Obsidian reveals the generated source.
+
+Existing design artifacts do not need to be moved. Without this plugin, Agent Threads v0.43.0 retains source access to legacy artifacts but no longer supplies `/design` or `EnterDesignMode` itself.
 
 ## Development
 
