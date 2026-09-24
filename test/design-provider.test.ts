@@ -39,5 +39,9 @@ describe('design artifact provider', () => {
     const contribution = createDesignArtifactContribution();
     const presentation = contribution.present({ id: 'a', title: 'A', kind: 'design-static', providerId: 'agent-threads.design', schemaVersion: 1, data: {} });
     expect(presentation.actions.map(action => action.id)).toEqual(['preview', 'capture', 'reveal']);
+    expect(presentation.actions[0]).toMatchObject({
+      id: 'preview',
+      icon: 'eye',
+    });
   });
 });
