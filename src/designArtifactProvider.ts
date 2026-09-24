@@ -70,7 +70,7 @@ export function presentDesignArtifact(ref: ThreadArtifactRef): ArtifactPresentat
     subtitle: 'Static design artifact',
     icon: 'panels-top-left',
     actions: [
-      { id: DESIGN_ACTION_PREVIEW, label: 'Preview design', variant: 'primary', icon: 'play', shortLabel: 'Preview' },
+      { id: DESIGN_ACTION_PREVIEW, label: 'Preview design', variant: 'primary', icon: 'eye', shortLabel: 'Preview' },
       { id: DESIGN_ACTION_CAPTURE, label: 'Capture design screenshot', variant: 'secondary', icon: 'camera' },
       { id: DESIGN_ACTION_REVEAL, label: 'Reveal design source', variant: 'secondary', icon: 'folder-open' },
     ],
