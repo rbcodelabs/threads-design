@@ -68,6 +68,14 @@ describe('host theme', () => {
       },
     };
 
-    expect(captureHostTheme(root as unknown as HTMLElement).background).toBe('#1e1e1e');
+    expect(captureHostTheme(root as unknown as HTMLElement)).toEqual({
+      mode: 'dark',
+      background: '#1e1e1e',
+      text: '#eeeeee',
+      mutedText: '#aaaaaa',
+      accent: '#9988ff',
+      border: '#444444',
+      interfaceFont: 'system-ui',
+    });
   });
 });
