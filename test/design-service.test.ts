@@ -38,6 +38,23 @@ describe('DesignService', () => {
     expect(handle.rollback).not.toHaveBeenCalled();
   });
 
+  it('captures the host theme only when creating a new artifact', async () => {
+    const { api, artifacts } = apiHarness();
+    const theme = {
+      mode: 'light' as const, background: '#fff', text: '#111', mutedText: '#666',
+      accent: '#6750a4', border: '#ddd', interfaceFont: 'system-ui',
+    };
+    const provideTheme = vi.fn(() => theme);
+    const service = new DesignService(api, fileFs, () => {}, provideTheme);
+
+    await service.prepare('thread-1', 'First brief');
+    expect(provideTheme).toHaveBeenCalledOnce();
+
+    await service.prepare('thread-1', 'Revision');
+    expect(artifacts).toHaveLength(1);
+    expect(provideTheme).toHaveBeenCalledOnce();
+  });
+
   it('rolls back the provisional thread and allocated storage before commit', async () => {
     const { api, handle } = apiHarness();
     api.artifacts.invokeAction.mockResolvedValueOnce({ status: 'error', message: 'preview failed' });
