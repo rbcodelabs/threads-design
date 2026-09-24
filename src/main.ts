@@ -5,6 +5,7 @@ import { createDesignAgentTool } from './designAgentTool';
 import { createDesignArtifactContribution, DESIGN_PROVIDER_OWNER } from './designArtifactProvider';
 import { createDesignSlashCommand } from './designSlashCommand';
 import * as fs from 'node:fs/promises';
+import { captureHostTheme } from './hostTheme';
 
 const REQUIRED_CAPABILITIES = [
   'threads.beginProvisional', 'threads.send', 'threads.open', 'threads.permissions',
@@ -53,7 +54,7 @@ export default class ThreadsDesignPlugin extends Plugin {
       mkdir: (target, options) => fs.mkdir(target, options),
       writeFile: (target, data, options) => fs.writeFile(target, data, options),
       rm: (target, options) => fs.rm(target, options),
-    }, (message, isError) => new Notice(isError ? message : `Design: ${message}`));
+    }, (message, isError) => new Notice(isError ? message : `Design: ${message}`), () => captureHostTheme());
     const registrations = [
       api.extensions.registerArtifactProvider(DESIGN_PROVIDER_OWNER, createDesignArtifactContribution()),
       api.extensions.registerAgentTool(DESIGN_PROVIDER_OWNER, createDesignAgentTool(service)),

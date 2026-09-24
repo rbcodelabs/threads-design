@@ -14,6 +14,7 @@ import {
   DESIGN_PROVIDER_ID,
   DESIGN_PROVIDER_OWNER,
 } from './designArtifactProvider';
+import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
 
 export interface PreparedDesign {
   artifact: DesignArtifact;
@@ -30,6 +31,7 @@ export class DesignService {
     private readonly api: AgentThreadsApiV1,
     private readonly fileFs: DesignArtifactFs,
     private readonly report: (message: string, isError?: boolean) => void = () => {},
+    private readonly provideTheme: () => HostThemeSnapshot = () => normalizeHostTheme('dark', {}),
   ) {}
 
   async state(threadId: string): Promise<{ hasArtifacts: boolean; existingTitle?: string } | null> {
@@ -64,7 +66,7 @@ export class DesignService {
         const allocation = await this.api.artifacts.allocateStorage(threadId, artifactId);
         if (!allocation.success) throw new Error(allocation.message);
         allocatedRoot = allocation.path;
-        artifact = await scaffoldDesignArtifact(threadId, allocation.path, brief, Date.now(), this.fileFs);
+        artifact = await scaffoldDesignArtifact(threadId, allocation.path, brief, Date.now(), this.fileFs, this.provideTheme());
         const ref: ThreadArtifactRef = {
           providerId: DESIGN_PROVIDER_ID,
           kind: DESIGN_ARTIFACT_KIND,

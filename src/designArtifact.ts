@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { DESIGN_ARTIFACT_KIND, DESIGN_ARTIFACT_SCHEMA_VERSION, DESIGN_PROVIDER_ID } from './designArtifactProvider';
+import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
 
 export { DESIGN_ARTIFACT_SCHEMA_VERSION };
 
@@ -94,25 +95,27 @@ function scaffoldHtml(): string {
 `;
 }
 
-const SCAFFOLD_CSS = `:root {
-  color-scheme: light dark;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  background: #101217;
-  color: #f1f3f8;
+function scaffoldCss(theme: HostThemeSnapshot): string {
+  return `:root {
+  color-scheme: ${theme.mode};
+  font-family: ${theme.interfaceFont};
+  background: ${theme.background};
+  color: ${theme.text};
 }
 * { box-sizing: border-box; }
-body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 15%, #242a3a 0, #151820 42%, #101217 75%); }
-.design-shell { width: min(520px, 100%); padding: clamp(28px, 7vw, 48px); border: 1px solid #ffffff1f; border-radius: 24px; background: #181b23e8; box-shadow: 0 24px 80px #0007; text-align: center; }
-.design-mark { width: 48px; height: 48px; margin: 0 auto 26px; display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 5px; padding: 11px; border: 1px solid #9f8cff55; border-radius: 14px; background: #9f8cff12; }
-.design-mark span { height: 45%; border-radius: 4px; background: #ad9cff; animation: prepare 1.25s ease-in-out infinite alternate; }
-.design-mark span:nth-child(2) { height: 75%; animation-delay: .18s; }
-.design-mark span:nth-child(3) { height: 100%; animation-delay: .36s; }
-.eyebrow { margin: 0; color: #ad9cff; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-h1 { margin: 12px 0 8px; font-size: clamp(28px, 6vw, 42px); line-height: 1.1; letter-spacing: -.035em; }
-.status { margin: 0; color: #adb5c6; font-size: clamp(14px, 2.5vw, 16px); line-height: 1.6; }
-@keyframes prepare { to { opacity: .35; transform: translateY(3px); } }
+body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: clamp(24px, 6vw, 64px); background: ${theme.background}; }
+.design-shell { width: min(420px, 100%); text-align: center; }
+.design-mark { width: 34px; height: 34px; margin: 0 auto 20px; display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; gap: 4px; padding: 9px; border: 1px solid ${theme.border}; border-radius: 9px; }
+.design-mark span { width: 4px; height: 4px; justify-self: center; border-radius: 50%; background: ${theme.accent}; animation: prepare 1.2s ease-in-out infinite alternate; }
+.design-mark span:nth-child(2) { animation-delay: .18s; }
+.design-mark span:nth-child(3) { animation-delay: .36s; }
+.eyebrow { margin: 0; color: ${theme.accent}; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+h1 { margin: 10px 0 7px; color: ${theme.text}; font-size: clamp(22px, 5vw, 28px); font-weight: 600; line-height: 1.2; letter-spacing: -.02em; }
+.status { margin: 0; color: ${theme.mutedText}; font-size: 14px; line-height: 1.55; }
+@keyframes prepare { to { opacity: .28; transform: translateY(2px); } }
 @media (prefers-reduced-motion: reduce) { .design-mark span { animation: none; } }
 `;
+}
 
 const SCAFFOLD_JS = `document.documentElement.dataset.artifactReady = 'true';\n`;
 
@@ -130,12 +133,13 @@ export async function scaffoldDesignArtifact(
   brief: string,
   now = Date.now(),
   fileFs: DesignArtifactFs = defaultFs,
+  theme: HostThemeSnapshot = normalizeHostTheme('dark', {}),
 ): Promise<DesignArtifact> {
   const manifest = buildDesignManifest(threadId, brief);
   await fileFs.mkdir(root, { recursive: true });
   await writeIfMissing(fileFs, path.join(root, 'artifact.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeIfMissing(fileFs, path.join(root, 'index.html'), scaffoldHtml());
-  await writeIfMissing(fileFs, path.join(root, 'styles.css'), SCAFFOLD_CSS);
+  await writeIfMissing(fileFs, path.join(root, 'styles.css'), scaffoldCss(theme));
   await writeIfMissing(fileFs, path.join(root, 'app.js'), SCAFFOLD_JS);
 
   const artifact: DesignArtifact = {
