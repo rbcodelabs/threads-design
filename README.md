@@ -17,11 +17,13 @@ Enable Agent Threads first, then enable **Design for Agent Threads**. The plugin
 
 Artifacts use host-allocated storage beneath `.geode/artifacts/`. A failed new-thread preparation rolls back both the provisional thread and allocated storage. Once preparation commits, a later agent-session failure keeps the artifact intact and is reported to the user.
 
+New artifacts start with a compact loading state that matches the host's current light or dark palette and interface font. This theme snapshot is captured only at creation; existing artifacts and agent-authored styles are preserved.
+
 ## Installation
 
 This repository is private; downloading releases requires repository access.
 
-1. Download `main.js` and `manifest.json` from the [v0.1.0 release](https://github.com/rbcodelabs/threads-design/releases/tag/v0.1.0).
+1. Download `main.js` and `manifest.json` from the [latest release](https://github.com/rbcodelabs/threads-design/releases/latest).
 2. Put both files in `<vault>/.geode/plugins/threads-design/` for Geode, or `<vault>/.obsidian/plugins/threads-design/` for Obsidian.
 3. Update and enable Agent Threads first, then enable **Design for Agent Threads** in the host's plugin settings. Restart the host if the new plugin is not listed.
 4. Start a new conversation and submit `/design a simple settings page` to check the installation. Geode opens the interactive preview; Obsidian reveals the generated source.
