@@ -56,6 +56,21 @@ describe('DesignService', () => {
     expect((await service.prepare('thread-1', 'Plan picker')).instructions).not.toContain('Mode:');
   });
 
+  it('keeps the existing artifact title when picking a variation', async () => {
+    const { api, artifacts } = apiHarness();
+    const service = new DesignService(api, fileFs);
+    await service.prepare('thread-1', 'Billing settings');
+
+    const picked = await service.prepare('thread-1', 'B, but use A\'s navigation', { mode: 'pick' });
+
+    expect(picked.created).toBe(false);
+    expect(picked.artifact.title).toBe('Billing settings');
+    expect(api.artifacts.update).toHaveBeenCalledWith(expect.anything(), 'thread-1', 'design-thread-1', { data: expect.objectContaining({ title: 'Billing settings' }) });
+    expect(api.artifacts.update.mock.calls[0][3]).not.toHaveProperty('title');
+    expect(picked.instructions).toContain('Mode: pick');
+    expect(picked.instructions).toContain('B, but use A\'s navigation');
+  });
+
   it('captures the host theme only when creating a new artifact', async () => {
     const { api, artifacts } = apiHarness();
     const theme = {

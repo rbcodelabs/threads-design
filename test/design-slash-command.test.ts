@@ -21,8 +21,8 @@ describe('Design slash command contribution', () => {
   it('describes both surfaces including modes', () => {
     const { command } = fixture();
     expect(command.name).toBe('design');
-    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief>, or /design wireframe: | states: <brief>');
-    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief>, or /design wireframe: | states: <brief>');
+    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick)');
+    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick)');
   });
 
   it('requires a brief for an empty thread', async () => {
@@ -186,6 +186,84 @@ describe('Design slash command contribution', () => {
       const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'wireframe:  ' }, host);
       expect(result).toEqual({ status: 'error', message: 'Include a brief after the mode — e.g. "/design wireframe: a billing settings page"' });
       expect(deps.dispatch).not.toHaveBeenCalled();
+    });
+
+    describe('variations', () => {
+      it('explores directions for the existing design on a bare variations command', async () => {
+        const { command, deps, context, host } = fixture();
+        vi.mocked(deps.getState).mockReturnValue({ hasArtifacts: true, existingTitle: 'Billing settings' });
+        expect(await command.thread!.invoke({ ...context, args: 'variations:' }, host)).toEqual({ status: 'ok' });
+        expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'Billing settings', 'variations');
+        await vi.waitFor(() => expect(deps.send).toHaveBeenCalledWith('original-thread', 'kickoff instructions'));
+      });
+
+      it('requires a brief for bare variations on an empty thread', async () => {
+        const { command, deps, context, host } = fixture();
+        expect(await command.thread!.invoke({ ...context, args: 'Variations:' }, host)).toMatchObject({ status: 'error', message: expect.stringContaining('Include a brief after the mode') });
+        expect(deps.prepare).not.toHaveBeenCalled();
+      });
+
+      it('creates a new artifact from a variations brief', async () => {
+        const { command, deps, context, host } = fixture();
+        await command.thread!.invoke({ ...context, args: 'variations: a pricing page' }, host);
+        expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'a pricing page', 'variations');
+      });
+
+      it('dispatches variations with a brief and rejects a bare one', async () => {
+        const { command, deps, context, host } = fixture();
+        expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'variations: a pricing page' }, host)).toEqual({ status: 'ok' });
+        expect(deps.dispatch).toHaveBeenCalledWith('a pricing page', undefined, 'variations');
+        expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'variations:' }, host)).toMatchObject({ status: 'error' });
+        expect(deps.dispatch).toHaveBeenCalledOnce();
+      });
+    });
+
+    describe('pick', () => {
+      const withDesign = () => {
+        const fx = fixture();
+        vi.mocked(fx.deps.getState).mockReturnValue({ hasArtifacts: true, existingTitle: 'Billing settings' });
+        return fx;
+      };
+
+      it.each(['B', 'b', 'B, but use A\'s navigation', 'd: denser', 'A. tighter', 'C - darker'])('prepares pick %j with the letter brief', async brief => {
+        const { command, deps, context, host } = withDesign();
+        expect(await command.thread!.invoke({ ...context, args: `pick: ${brief}` }, host)).toEqual({ status: 'ok' });
+        expect(deps.prepare).toHaveBeenCalledWith('original-thread', brief, 'pick');
+        expect(host.report).toHaveBeenCalledWith('Revising design artifact in pick mode…');
+        await vi.waitFor(() => expect(deps.send).toHaveBeenCalledWith('original-thread', 'kickoff instructions'));
+      });
+
+      it.each(['Bold', 'E', 'the second one', 'AB'])('rejects pick %j without a variation letter', async brief => {
+        const { command, deps, context, host } = withDesign();
+        expect(await command.thread!.invoke({ ...context, args: `pick: ${brief}` }, host)).toEqual({ status: 'error', message: 'Start with the variation letter — e.g. /design pick: B' });
+        expect(deps.prepare).not.toHaveBeenCalled();
+      });
+
+      it('requires a letter even when the thread has a design', async () => {
+        const { command, deps, context, host } = withDesign();
+        expect(await command.thread!.invoke({ ...context, args: 'Pick:  ' }, host)).toEqual({ status: 'error', message: 'Include the variation letter — e.g. /design pick: B' });
+        expect(deps.prepare).not.toHaveBeenCalled();
+      });
+
+      it('rejects pick before preparing when the thread has no design', async () => {
+        const { command, deps, context, host } = fixture();
+        const result = await command.thread!.invoke({ ...context, args: 'pick: B' }, host);
+        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('/design variations:') });
+        expect(deps.prepare).not.toHaveBeenCalled();
+      });
+
+      it('rejects dispatch pick, pointing to variations in an existing thread', async () => {
+        const { command, deps, context, host } = fixture();
+        const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'pick: B' }, host);
+        expect(result).toMatchObject({ status: 'error', message: expect.stringContaining('Run /design variations: in an existing design thread first') });
+        expect(deps.dispatch).not.toHaveBeenCalled();
+      });
+
+      it('rejects an empty dispatch pick with the letter example', async () => {
+        const { command, deps, context, host } = fixture();
+        expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'pick:' }, host)).toEqual({ status: 'error', message: 'Include the variation letter — e.g. /design pick: B' });
+        expect(deps.dispatch).not.toHaveBeenCalled();
+      });
     });
   });
 });
