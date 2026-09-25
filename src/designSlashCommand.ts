@@ -5,6 +5,8 @@ import {
   PICK_EMPTY_ERROR,
   PICK_LETTER_ERROR,
   PICK_WITHOUT_DESIGN_ERROR,
+  SPEC_DISPATCH_ERROR,
+  SPEC_WITHOUT_DESIGN_ERROR,
   parseDesignModeArgs,
   pickLetter,
   type DesignMode,
@@ -44,6 +46,10 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
           if (!state.hasArtifacts) return failure(PICK_WITHOUT_DESIGN_ERROR);
           if (!pickLetter(brief)) return failure(PICK_LETTER_ERROR);
         }
+        if (mode === 'spec' && !state.hasArtifacts) {
+          // spec is an overlay on an existing design; there is nothing to annotate yet.
+          return failure(SPEC_WITHOUT_DESIGN_ERROR);
+        }
         if (!brief && !state.hasArtifacts) {
           if (mode) return failure(`Include a brief after the mode — e.g. ${MODE_EXAMPLE}`);
           return failure('Include a brief — e.g. /design a responsive pricing page for a developer tool');
@@ -82,6 +88,7 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
         if (host.signal.aborted) return cancelled();
         const { mode, brief } = parseDesignModeArgs(context.args);
         if (mode === 'pick') return failure(brief ? PICK_DISPATCH_ERROR : PICK_EMPTY_ERROR);
+        if (mode === 'spec') return failure(SPEC_DISPATCH_ERROR);
         if (mode && !brief) return failure(`Include a brief after the mode — e.g. "${MODE_EXAMPLE}"`);
         if (!brief) return failure('Include a brief — e.g. "/design a responsive pricing page for a developer tool"');
         if (context.hasImages || context.hasAttachment) {

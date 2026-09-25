@@ -15,10 +15,11 @@ describe('EnterDesignMode agent tool', () => {
     const { tool } = fixture();
     const schema = tool.inputSchema as { properties: Record<string, { enum?: string[]; description?: string }>; required: string[] };
     expect(schema.required).toEqual(['brief']);
-    expect(schema.properties.mode.enum).toEqual(['wireframe', 'states', 'variations', 'pick']);
+    expect(schema.properties.mode.enum).toEqual(['wireframe', 'states', 'variations', 'pick', 'spec']);
     expect(schema.properties.mode.description).toMatch(/variations/);
     expect(schema.properties.mode.description).toMatch(/pick/);
     expect(schema.properties.mode.description).toMatch(/wireframe/);
+    expect(schema.properties.mode.description).toMatch(/spec/);
   });
 
   it('passes no mode through when omitted', async () => {
@@ -69,6 +70,22 @@ describe('EnterDesignMode agent tool', () => {
     const result = await tool.invoke('thread-1', { brief: 'B', mode: 'pick' }, host);
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('/design variations:');
+    expect(service.prepare).not.toHaveBeenCalled();
+  });
+
+  it('passes spec through when the thread has a design artifact', async () => {
+    const { tool, service, host } = fixture();
+    const result = await tool.invoke('thread-1', { brief: 'the pricing page', mode: 'spec' }, host);
+    expect(result.isError).toBeUndefined();
+    expect(service.prepare).toHaveBeenCalledWith('thread-1', 'the pricing page', { mode: 'spec' });
+  });
+
+  it('rejects spec when the thread has no design artifact', async () => {
+    const { tool, service, host } = fixture();
+    service.state.mockResolvedValue({ hasArtifacts: false } as never);
+    const result = await tool.invoke('thread-1', { brief: 'the pricing page', mode: 'spec' }, host);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe('This thread has no design to annotate. Build a design first, then run /design spec: on it.');
     expect(service.prepare).not.toHaveBeenCalled();
   });
 });

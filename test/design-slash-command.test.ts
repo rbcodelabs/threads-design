@@ -21,8 +21,8 @@ describe('Design slash command contribution', () => {
   it('describes both surfaces including modes', () => {
     const { command } = fixture();
     expect(command.name).toBe('design');
-    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick)');
-    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick)');
+    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec)');
+    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec)');
   });
 
   it('requires a brief for an empty thread', async () => {
@@ -262,6 +262,56 @@ describe('Design slash command contribution', () => {
       it('rejects an empty dispatch pick with the letter example', async () => {
         const { command, deps, context, host } = fixture();
         expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'pick:' }, host)).toEqual({ status: 'error', message: 'Include the variation letter — e.g. /design pick: B' });
+        expect(deps.dispatch).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('spec', () => {
+      const withDesign = () => {
+        const fx = fixture();
+        vi.mocked(fx.deps.getState).mockReturnValue({ hasArtifacts: true, existingTitle: 'Billing settings' });
+        return fx;
+      };
+
+      it('runs spec against the existing design on a bare spec command', async () => {
+        const { command, deps, context, host } = withDesign();
+        expect(await command.thread!.invoke({ ...context, args: 'spec:' }, host)).toEqual({ status: 'ok' });
+        expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'Billing settings', 'spec');
+        expect(host.report).toHaveBeenCalledWith('Revising design artifact in spec mode…');
+        await vi.waitFor(() => expect(deps.send).toHaveBeenCalledWith('original-thread', 'kickoff instructions'));
+      });
+
+      it('runs spec with a brief against the existing design', async () => {
+        const { command, deps, context, host } = withDesign();
+        expect(await command.thread!.invoke({ ...context, args: 'spec: the pricing page' }, host)).toEqual({ status: 'ok' });
+        expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'the pricing page', 'spec');
+      });
+
+      it('rejects bare spec before preparing when the thread has no design', async () => {
+        const { command, deps, context, host } = fixture();
+        const result = await command.thread!.invoke({ ...context, args: 'spec:' }, host);
+        expect(result).toEqual({ status: 'error', message: 'This thread has no design to annotate. Build a design first, then run /design spec: on it.' });
+        expect(deps.prepare).not.toHaveBeenCalled();
+      });
+
+      it('rejects spec with a brief when the thread has no design', async () => {
+        const { command, deps, context, host } = fixture();
+        const result = await command.thread!.invoke({ ...context, args: 'spec: the pricing page' }, host);
+        expect(result).toEqual({ status: 'error', message: 'This thread has no design to annotate. Build a design first, then run /design spec: on it.' });
+        expect(deps.prepare).not.toHaveBeenCalled();
+      });
+
+      it('rejects dispatch spec, pointing to building a design first', async () => {
+        const { command, deps, context, host } = fixture();
+        const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'spec: the pricing page' }, host);
+        expect(result).toEqual({ status: 'error', message: 'There is nothing to annotate in a new thread. Build a design first, then run /design spec: in that thread.' });
+        expect(deps.dispatch).not.toHaveBeenCalled();
+      });
+
+      it('rejects a bare dispatch spec the same way', async () => {
+        const { command, deps, context, host } = fixture();
+        const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'spec:' }, host);
+        expect(result).toEqual({ status: 'error', message: 'There is nothing to annotate in a new thread. Build a design first, then run /design spec: in that thread.' });
         expect(deps.dispatch).not.toHaveBeenCalled();
       });
     });
