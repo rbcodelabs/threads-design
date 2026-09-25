@@ -14,7 +14,13 @@ import {
   DESIGN_PROVIDER_ID,
   DESIGN_PROVIDER_OWNER,
 } from './designArtifactProvider';
+import type { DesignMode } from './designModes';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
+
+export interface PrepareDesignOptions {
+  mode?: DesignMode;
+  checkPermissions?: boolean;
+}
 
 export interface PreparedDesign {
   artifact: DesignArtifact;
@@ -41,7 +47,7 @@ export class DesignService {
     return { hasArtifacts: !!ref, existingTitle: ref?.title };
   }
 
-  async prepare(threadId: string, brief: string, checkPermissions = true): Promise<PreparedDesign> {
+  async prepare(threadId: string, brief: string, { mode, checkPermissions = true }: PrepareDesignOptions = {}): Promise<PreparedDesign> {
     if (checkPermissions) {
       const permissions = await this.api.threads.permissions(threadId);
       if (!permissions) throw new Error('Calling thread is unavailable.');
@@ -85,7 +91,7 @@ export class DesignService {
       const preview = await this.api.artifacts.invokeAction(threadId, artifact.id, DESIGN_ACTION_PREVIEW);
       if (preview.status === 'error') throw new Error(preview.message);
       if (preview.status === 'warning') this.report(preview.message);
-      return { artifact, created, instructions: designKickoffMessage(artifact, brief) };
+      return { artifact, created, instructions: designKickoffMessage(artifact, brief, mode) };
     } catch (error) {
       if (allocatedRoot) {
         try { await this.fileFs.rm?.(allocatedRoot, { recursive: true, force: true }); } catch { /* host rollback remains authoritative */ }
@@ -94,7 +100,7 @@ export class DesignService {
     }
   }
 
-  async dispatch(brief: string, harness?: AgentHarness): Promise<string> {
+  async dispatch(brief: string, harness?: AgentHarness, mode?: DesignMode): Promise<string> {
     const handle = await this.api.threads.beginProvisional(DESIGN_PROVIDER_OWNER, {
       title: designTitle(brief),
       agentHarness: harness,
@@ -102,7 +108,7 @@ export class DesignService {
     });
     this.pending.add(handle);
     try {
-      const prepared = await this.prepare(handle.threadId, brief, false);
+      const prepared = await this.prepare(handle.threadId, brief, { mode, checkPermissions: false });
       await handle.commit();
       this.pending.delete(handle);
       try {

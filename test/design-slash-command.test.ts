@@ -18,11 +18,11 @@ function fixture() {
 }
 
 describe('Design slash command contribution', () => {
-  it('provides the existing descriptions for both surfaces', () => {
+  it('describes both surfaces including modes', () => {
     const { command } = fixture();
     expect(command.name).toBe('design');
-    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief>');
-    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief>');
+    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief>, or /design wireframe: | states: <brief>');
+    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief>, or /design wireframe: | states: <brief>');
   });
 
   it('requires a brief for an empty thread', async () => {
@@ -132,5 +132,60 @@ describe('Design slash command contribution', () => {
     controller.abort();
     expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch' }, host)).toMatchObject({ status: 'error' });
     expect(deps.dispatch).not.toHaveBeenCalled();
+  });
+
+  describe('modes', () => {
+    it.each([
+      ['wireframe: a billing settings page', 'wireframe', 'a billing settings page'],
+      ['States:   the plan-picker card', 'states', 'the plan-picker card'],
+    ] as const)('prepares %j with the mode stripped from the brief', async (args, mode, brief) => {
+      const { command, deps, context, host } = fixture();
+      expect(await command.thread!.invoke({ ...context, args }, host)).toEqual({ status: 'ok' });
+      expect(deps.prepare).toHaveBeenCalledWith('original-thread', brief, mode);
+      expect(host.report).toHaveBeenCalledWith(`Design artifact created. Starting ${mode} design turn…`);
+      await vi.waitFor(() => expect(deps.send).toHaveBeenCalledWith('original-thread', 'kickoff instructions'));
+    });
+
+    it('treats a keyword without a colon as a normal brief', async () => {
+      const { command, deps, context, host } = fixture();
+      await command.thread!.invoke({ ...context, args: 'states of the union dashboard' }, host);
+      expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'states of the union dashboard');
+    });
+
+    it('runs a bare mode against the existing design using its title', async () => {
+      const { command, deps, context, host } = fixture();
+      vi.mocked(deps.getState).mockReturnValue({ hasArtifacts: true, existingTitle: 'Billing settings' });
+      expect(await command.thread!.invoke({ ...context, args: 'Wireframe:' }, host)).toEqual({ status: 'ok' });
+      expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'Billing settings', 'wireframe');
+      expect(host.report).toHaveBeenCalledWith('Revising design artifact in wireframe mode…');
+      await vi.waitFor(() => expect(deps.send).toHaveBeenCalledWith('original-thread', 'kickoff instructions'));
+    });
+
+    it('requires a brief for a bare mode on an empty thread', async () => {
+      const { command, deps, context, host } = fixture();
+      const result = await command.thread!.invoke({ ...context, args: 'states:' }, host);
+      expect(result).toEqual({ status: 'error', message: 'Include a brief after the mode — e.g. /design wireframe: a billing settings page' });
+      expect(deps.prepare).not.toHaveBeenCalled();
+    });
+
+    it('dispatches with the parsed mode and stripped brief', async () => {
+      const { command, deps, context, host } = fixture();
+      const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'STATES: the plan-picker card', agentHarness: 'codex' }, host);
+      expect(result).toEqual({ status: 'ok' });
+      expect(deps.dispatch).toHaveBeenCalledWith('the plan-picker card', 'codex', 'states');
+    });
+
+    it('dispatches an unknown prefix as part of the brief', async () => {
+      const { command, deps, context, host } = fixture();
+      await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'foo: a billing page' }, host);
+      expect(deps.dispatch).toHaveBeenCalledWith('foo: a billing page', undefined);
+    });
+
+    it('rejects dispatch of a bare mode', async () => {
+      const { command, deps, context, host } = fixture();
+      const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'wireframe:  ' }, host);
+      expect(result).toEqual({ status: 'error', message: 'Include a brief after the mode — e.g. "/design wireframe: a billing settings page"' });
+      expect(deps.dispatch).not.toHaveBeenCalled();
+    });
   });
 });

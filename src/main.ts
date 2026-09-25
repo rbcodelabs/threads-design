@@ -61,9 +61,9 @@ export default class ThreadsDesignPlugin extends Plugin {
       api.extensions.registerSlashCommand(DESIGN_PROVIDER_OWNER, createDesignSlashCommand({
         getState: threadId => service.state(threadId),
         isDesktopFilesystem: () => true,
-        prepare: (threadId, brief) => service.prepare(threadId, brief),
+        prepare: (threadId, brief, mode) => service.prepare(threadId, brief, { mode }),
         send: async (threadId, prompt) => { await api.threads.send(threadId, { prompt, ownerPluginId: DESIGN_PROVIDER_OWNER.pluginId }); },
-        dispatch: (brief, harness) => service.dispatch(brief, harness),
+        dispatch: (brief, harness, mode) => service.dispatch(brief, harness, mode),
       })),
     ];
     const refused = registrations.find(registration => !registration.success);
