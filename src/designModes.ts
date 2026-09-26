@@ -44,3 +44,16 @@ export const SPEC_DISPATCH_ERROR = 'There is nothing to annotate in a new thread
 
 /** Compact mode list for command descriptions, e.g. "wireframe, states, variations, pick, spec". */
 export const DESIGN_MODE_LIST = DESIGN_MODES.join(', ');
+
+/**
+ * Single source of truth for what each mode does, in one short sentence.
+ * Reused to build the agent tool's enum description and the slash command's
+ * argument-completion suggestions, so the two can't drift apart.
+ */
+export const DESIGN_MODE_DESCRIPTIONS: Record<DesignMode, string> = {
+  wireframe: 'grayscale low-fidelity wireframe.',
+  states: 'component state sheet in light and dark themes.',
+  variations: '3 (up to 4) distinct directions A–D plus a comparison board.',
+  pick: 'promote a variation; the brief must start with its letter, e.g. "B" or "B, but use A\'s navigation".',
+  spec: 'add a toggleable redline/spec overlay to the existing design without changing it.',
+};

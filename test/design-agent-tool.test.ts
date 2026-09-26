@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDesignAgentTool } from '../src/designAgentTool';
 import type { DesignService } from '../src/DesignService';
+import { DESIGN_MODES, DESIGN_MODE_DESCRIPTIONS } from '../src/designModes';
 
 function fixture() {
   const service = {
@@ -20,6 +21,16 @@ describe('EnterDesignMode agent tool', () => {
     expect(schema.properties.mode.description).toMatch(/pick/);
     expect(schema.properties.mode.description).toMatch(/wireframe/);
     expect(schema.properties.mode.description).toMatch(/spec/);
+  });
+
+  it('builds the mode enum description from the shared per-mode descriptions, so they cannot drift', () => {
+    const { tool } = fixture();
+    const schema = tool.inputSchema as { properties: Record<string, { description?: string }> };
+    const expected = `Optional prompt mode for this turn. ${DESIGN_MODES.map(mode => `"${mode}": ${DESIGN_MODE_DESCRIPTIONS[mode]}`).join(' ')} Omit for a full visual design.`;
+    expect(schema.properties.mode.description).toBe(expected);
+    for (const mode of DESIGN_MODES) {
+      expect(schema.properties.mode.description).toContain(DESIGN_MODE_DESCRIPTIONS[mode]);
+    }
   });
 
   it('passes no mode through when omitted', async () => {

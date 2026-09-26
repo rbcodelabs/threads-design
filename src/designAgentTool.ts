@@ -1,8 +1,12 @@
 import type { AgentToolContribution } from './contracts';
 import type { DesignService } from './DesignService';
-import { DESIGN_MODES, PICK_LETTER_ERROR, PICK_WITHOUT_DESIGN_ERROR, SPEC_WITHOUT_DESIGN_ERROR, isDesignMode, pickLetter } from './designModes';
+import { DESIGN_MODES, DESIGN_MODE_DESCRIPTIONS, PICK_LETTER_ERROR, PICK_WITHOUT_DESIGN_ERROR, SPEC_WITHOUT_DESIGN_ERROR, isDesignMode, pickLetter } from './designModes';
 
 const failure = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
+
+// Built from the shared per-mode descriptions so the tool schema and the
+// slash command's autocomplete can never say different things about a mode.
+const MODE_ENUM_DESCRIPTION = `Optional prompt mode for this turn. ${DESIGN_MODES.map(mode => `"${mode}": ${DESIGN_MODE_DESCRIPTIONS[mode]}`).join(' ')} Omit for a full visual design.`;
 
 export function createDesignAgentTool(service: DesignService): AgentToolContribution {
   return {
@@ -15,7 +19,7 @@ export function createDesignAgentTool(service: DesignService): AgentToolContribu
         mode: {
           type: 'string',
           enum: [...DESIGN_MODES],
-          description: 'Optional prompt mode for this turn. "wireframe": grayscale low-fidelity wireframe. "states": component state sheet in light and dark themes. "variations": 3 (up to 4) distinct directions A–D plus a comparison board. "pick": promote a variation; the brief must start with its letter, e.g. "B" or "B, but use A\'s navigation". "spec": add a toggleable redline/spec overlay to the existing design without changing it. Omit for a full visual design.',
+          description: MODE_ENUM_DESCRIPTION,
         },
       },
       required: ['brief'],
