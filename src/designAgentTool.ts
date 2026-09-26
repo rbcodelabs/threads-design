@@ -1,5 +1,8 @@
 import type { AgentToolContribution } from './contracts';
 import type { DesignService } from './DesignService';
+import { DESIGN_MODES, isDesignMode } from './designModes';
+
+const failure = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
 
 export function createDesignAgentTool(service: DesignService): AgentToolContribution {
   return {
@@ -7,7 +10,14 @@ export function createDesignAgentTool(service: DesignService): AgentToolContribu
     description: 'Create or reopen a static design artifact for this thread and open its preview.',
     inputSchema: {
       type: 'object',
-      properties: { brief: { type: 'string', minLength: 1, description: 'The visual design brief or requested revision.' } },
+      properties: {
+        brief: { type: 'string', minLength: 1, description: 'The visual design brief or requested revision.' },
+        mode: {
+          type: 'string',
+          enum: [...DESIGN_MODES],
+          description: 'Optional prompt mode for this turn. "wireframe" produces a grayscale low-fidelity wireframe; "states" produces a component state sheet (default, hover, focus, disabled, loading, empty, error, overflow) in light and dark themes. Omit for a full visual design.',
+        },
+      },
       required: ['brief'],
       additionalProperties: false,
     },
@@ -15,12 +25,16 @@ export function createDesignAgentTool(service: DesignService): AgentToolContribu
     requiresApproval: true,
     async invoke(threadId, args) {
       const brief = typeof args.brief === 'string' ? args.brief.trim() : '';
-      if (!brief) return { content: [{ type: 'text', text: 'A non-empty design brief is required.' }], isError: true };
+      if (!brief) return failure('A non-empty design brief is required.');
+      const mode = args.mode;
+      if (mode !== undefined && !isDesignMode(mode)) {
+        return failure(`Unknown design mode: ${String(mode)}. Use one of: ${DESIGN_MODES.join(', ')}.`);
+      }
       try {
-        const result = await service.prepare(threadId, brief);
+        const result = await service.prepare(threadId, brief, { mode });
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       } catch (error) {
-        return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true };
+        return failure(error instanceof Error ? error.message : String(error));
       }
     },
   };

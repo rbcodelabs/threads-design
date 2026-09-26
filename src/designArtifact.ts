@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { DESIGN_ARTIFACT_KIND, DESIGN_ARTIFACT_SCHEMA_VERSION, DESIGN_PROVIDER_ID } from './designArtifactProvider';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
+import { parseDesignModeArgs, type DesignMode } from './designModes';
 
 export { DESIGN_ARTIFACT_SCHEMA_VERSION };
 
@@ -51,7 +52,7 @@ export function artifactIdForThread(threadId: string): string {
 }
 
 export function designTitle(brief: string): string {
-  const firstLine = brief.trim().split(/\r?\n/, 1)[0].replace(/^#+\s*/, '').trim();
+  const firstLine = parseDesignModeArgs(brief).brief.trim().split(/\r?\n/, 1)[0].replace(/^#+\s*/, '').trim();
   if (!firstLine) return 'Design artifact';
   return firstLine.length <= 120 ? firstLine : `${firstLine.slice(0, 117)}…`;
 }
@@ -160,7 +161,33 @@ export async function scaffoldDesignArtifact(
   return artifact;
 }
 
-export function designKickoffMessage(artifact: DesignArtifact, brief: string): string {
+const MODE_OVERRIDE = 'These mode instructions override the design intent above wherever they conflict, including the call for a distinctive visual direction.';
+
+const MODE_INSTRUCTIONS: Record<DesignMode, string> = {
+  wireframe: `Mode: wireframe
+${MODE_OVERRIDE}
+- Produce a low-fidelity wireframe of the brief, not a finished visual design.
+- Grayscale only: no brand color, gradients, shadows, or imagery.
+- Use one system font stack (for example system-ui, sans-serif) at a restrained type scale.
+- Represent images and media as labeled gray placeholder boxes.
+- Use realistic labels and content; never lorem ipsum.
+- Focus on information architecture, layout, hierarchy, navigation, and primary flows.
+- Include key empty and primary states where relevant.
+- Still show both the desktop and mobile layouts.
+- Add nothing decorative; every element should convey structure or content.
+- If the artifact already contains a design, reduce it to its wireframe structure rather than inventing a new one, unless the brief says otherwise.`,
+  states: `Mode: states
+${MODE_OVERRIDE}
+- Build a component state sheet for the component named in the brief. If the brief only repeats the artifact title, use the most important component of the existing design.
+- Lay the sheet out as a grid with labeled rows and columns covering these states: default, hover, focus-visible, active/pressed, disabled, loading, empty, error, and overflow (very long content).
+- Render every state in light and dark themes side by side.
+- Build each state from real markup and CSS. Show hover, focus-visible, and active/pressed statically with forced classes such as .is-hover, .is-focus-visible, and .is-active that mirror the :hover, :focus-visible, and :active rules, so the states are visible without interaction while real interaction still works.
+- Keep the component visually consistent with the existing design if one exists.
+- The sheet replaces the content of index.html; keep a short note in the page header naming the component.`,
+};
+
+export function designKickoffMessage(artifact: DesignArtifact, brief: string, mode?: DesignMode): string {
+  const modeSection = mode ? `${MODE_INSTRUCTIONS[mode]}\n\n` : '';
   return `You are working in Agent Threads Design mode.
 
 Create or revise the static UI artifact at:
@@ -175,7 +202,7 @@ Design intent:
 - Establish appropriate information architecture, realistic content, clear visual hierarchy, and a distinctive visual direction suited to the brief.
 - Review and refine both desktop and mobile layouts before finishing.
 
-Artifact rules:
+${modeSection}Artifact rules:
 - Treat artifact.json as the host contract; do not change its schemaVersion, id, runtime, thread id, or permissions.
 - Build a polished responsive interface using index.html, styles.css, app.js, and local assets only.
 - Use external CSS and JavaScript files. Inline JavaScript is blocked by the artifact CSP.

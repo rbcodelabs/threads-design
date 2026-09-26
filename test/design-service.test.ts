@@ -38,6 +38,24 @@ describe('DesignService', () => {
     expect(handle.rollback).not.toHaveBeenCalled();
   });
 
+  it('passes the mode into dispatched kickoff instructions and titles from the brief', async () => {
+    const { api } = apiHarness();
+    const service = new DesignService(api, fileFs);
+
+    await service.dispatch('Billing settings', 'claude', 'wireframe');
+
+    expect(api.threads.beginProvisional).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ title: 'Billing settings' }));
+    expect(api.threads.send).toHaveBeenCalledWith('new-thread', expect.objectContaining({ prompt: expect.stringContaining('Mode: wireframe') }));
+  });
+
+  it('passes the mode into prepared instructions and defaults to none', async () => {
+    const { api } = apiHarness();
+    const service = new DesignService(api, fileFs);
+
+    expect((await service.prepare('thread-1', 'Plan picker', { mode: 'states' })).instructions).toContain('Mode: states');
+    expect((await service.prepare('thread-1', 'Plan picker')).instructions).not.toContain('Mode:');
+  });
+
   it('captures the host theme only when creating a new artifact', async () => {
     const { api, artifacts } = apiHarness();
     const theme = {

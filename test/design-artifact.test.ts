@@ -21,6 +21,13 @@ describe('design artifact contract', () => {
     expect(designTitle('')).toBe('Design artifact');
   });
 
+  it('strips a mode prefix from titles', () => {
+    expect(designTitle('Wireframe:  a billing settings page')).toBe('a billing settings page');
+    expect(designTitle('states: the plan-picker card')).toBe('the plan-picker card');
+    expect(designTitle('states of the union dashboard')).toBe('states of the union dashboard');
+    expect(designTitle('wireframe:')).toBe('Design artifact');
+  });
+
   it('creates the zero-install scaffold inside host-allocated storage', async () => {
     const writes = new Map<string, string>();
     const fileFs: DesignArtifactFs = {
@@ -73,5 +80,32 @@ describe('design artifact contract', () => {
     expect(message).toContain('Do not install packages');
     expect(message).toContain('Inline JavaScript is blocked');
     expect(message).not.toContain('Claude Code');
+  });
+
+  describe('kickoff modes', () => {
+    const artifact = {
+      id: 'design-t', kind: 'design-static' as const, title: 'T', providerId: 'agent-threads.design' as const, schemaVersion: 1 as const,
+      storageRoot: '/artifact', root: '/artifact', manifestPath: '/artifact/artifact.json', entryPath: '/artifact/index.html',
+      createdAt: 1, updatedAt: 1,
+    };
+
+    it('adds no mode section by default', () => {
+      const message = designKickoffMessage(artifact, 'Make a dashboard');
+      expect(message).toBe(designKickoffMessage(artifact, 'Make a dashboard', undefined));
+      expect(message).not.toContain('Mode:');
+      expect(message.endsWith('Start now. Edit the artifact files directly, verify the static result, and report what you changed.')).toBe(true);
+    });
+
+    it.each([
+      ['wireframe', ['Grayscale only', 'labeled gray placeholder boxes', 'never lorem ipsum', 'desktop and mobile', 'reduce it to its wireframe structure']],
+      ['states', ['component state sheet', 'focus-visible', 'overflow (very long content)', 'light and dark themes side by side', '.is-hover', 'naming the component']],
+    ] as const)('inserts only the %s section into the default message', (mode, phrases) => {
+      const base = designKickoffMessage(artifact, 'Make a dashboard');
+      const message = designKickoffMessage(artifact, 'Make a dashboard', mode);
+      expect(message).toContain(`\n\nMode: ${mode}\nThese mode instructions override the design intent above`);
+      for (const phrase of phrases) expect(message).toContain(phrase);
+      const section = message.slice(message.indexOf(`Mode: ${mode}`), message.indexOf('Artifact rules:'));
+      expect(message.replace(section, '')).toBe(base);
+    });
   });
 });

@@ -19,6 +19,15 @@ Artifacts use host-allocated storage beneath `.geode/artifacts/`. A failed new-t
 
 New artifacts start with a compact loading state that matches the host's current light or dark palette and interface font. This theme snapshot is captured only at creation; existing artifacts and agent-authored styles are preserved.
 
+## Modes
+
+A mode changes the instructions for one design turn. It does not create a new artifact kind: each thread keeps its single design artifact, and `artifact.json` is unchanged. Start the brief with a mode keyword and a colon (case-insensitive):
+
+- `/design wireframe: a billing settings page` produces a grayscale, low-fidelity wireframe that focuses on layout, hierarchy, and flows. If the thread already has a design, the wireframe reduces it to its structure.
+- `/design states: the plan-picker card` builds a component state sheet. It covers default, hover, focus-visible, pressed, disabled, loading, empty, error, and overflow states, in light and dark themes.
+
+The colon is required, so `/design states of the union dashboard` is an ordinary brief. In a thread that already has a design, a bare `/design wireframe:` or `/design states:` runs that mode against the existing design. `EnterDesignMode` accepts the same modes through its optional `mode` argument.
+
 ## Installation
 
 This repository is private; downloading releases requires repository access.
