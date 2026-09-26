@@ -1,5 +1,7 @@
-import type { SlashCommandContribution, SlashCommandResult } from './contracts';
+import type { SlashCommandArgCompletion, SlashCommandContribution, SlashCommandResult } from './contracts';
 import {
+  DESIGN_MODES,
+  DESIGN_MODE_DESCRIPTIONS,
   DESIGN_MODE_LIST,
   PICK_DISPATCH_ERROR,
   PICK_EMPTY_ERROR,
@@ -27,6 +29,11 @@ const MODE_EXAMPLE = '/design wireframe: a billing settings page';
 // Only forward a mode when one was requested so default calls keep their exact shape.
 const modeArgs = (mode: DesignMode | undefined): [] | [DesignMode] => mode ? [mode] : [];
 const MODE_USAGE = `/design <brief> or /design <mode>: <brief> (${DESIGN_MODE_LIST})`;
+// pick and spec always error on dispatch — there's nothing to pick/annotate in a brand-new thread —
+// so they're excluded from what dispatch offers as autocomplete.
+const DISPATCH_MODES: readonly DesignMode[] = DESIGN_MODES.filter(mode => mode !== 'pick' && mode !== 'spec');
+const modeCompletions = (modes: readonly DesignMode[]): readonly SlashCommandArgCompletion[] =>
+  modes.map(mode => ({ name: `${mode}:`, description: DESIGN_MODE_DESCRIPTIONS[mode] }));
 
 /** Design behavior with host adapters; command views know only the contribution contract. */
 export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): SlashCommandContribution {
@@ -34,6 +41,7 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
     name: 'design',
     thread: {
       description: `Create or revise a live static UI artifact: ${MODE_USAGE}`,
+      argCompletions: modeCompletions(DESIGN_MODES),
       invoke: async (context, host) => {
         if (host.signal.aborted) return cancelled();
         const threadId = context.threadId;
@@ -84,6 +92,7 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
     },
     dispatch: {
       description: `Dispatch a thread with a live static UI artifact: ${MODE_USAGE}`,
+      argCompletions: modeCompletions(DISPATCH_MODES),
       invoke: async (context, host) => {
         if (host.signal.aborted) return cancelled();
         const { mode, brief } = parseDesignModeArgs(context.args);

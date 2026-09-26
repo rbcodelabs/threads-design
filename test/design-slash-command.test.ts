@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDesignSlashCommand, type DesignSlashCommandDependencies } from '../src/designSlashCommand';
 import type { SlashCommandContext, SlashCommandHost } from '../src/contracts';
+import { DESIGN_MODE_DESCRIPTIONS } from '../src/designModes';
 
 function fixture() {
   const deps: DesignSlashCommandDependencies = {
@@ -23,6 +24,30 @@ describe('Design slash command contribution', () => {
     expect(command.name).toBe('design');
     expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec)');
     expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec)');
+  });
+
+  it('offers all 5 mode keywords with their colons as thread argument completions', () => {
+    const { command } = fixture();
+    expect(command.thread?.argCompletions).toEqual([
+      { name: 'wireframe:', description: DESIGN_MODE_DESCRIPTIONS.wireframe },
+      { name: 'states:', description: DESIGN_MODE_DESCRIPTIONS.states },
+      { name: 'variations:', description: DESIGN_MODE_DESCRIPTIONS.variations },
+      { name: 'pick:', description: DESIGN_MODE_DESCRIPTIONS.pick },
+      { name: 'spec:', description: DESIGN_MODE_DESCRIPTIONS.spec },
+    ]);
+  });
+
+  it('offers only the modes valid on dispatch as dispatch argument completions, excluding pick and spec', () => {
+    const { command } = fixture();
+    expect(command.dispatch?.argCompletions).toEqual([
+      { name: 'wireframe:', description: DESIGN_MODE_DESCRIPTIONS.wireframe },
+      { name: 'states:', description: DESIGN_MODE_DESCRIPTIONS.states },
+      { name: 'variations:', description: DESIGN_MODE_DESCRIPTIONS.variations },
+    ]);
+    const names = command.dispatch?.argCompletions?.map(c => c.name) ?? [];
+    expect(names).not.toContain('pick:');
+    expect(names).not.toContain('spec:');
+    expect(command.dispatch?.argCompletions).toHaveLength(3);
   });
 
   it('requires a brief for an empty thread', async () => {
