@@ -1,6 +1,6 @@
 import type { AgentToolContribution } from './contracts';
 import type { DesignService } from './DesignService';
-import { DESIGN_MODES, isDesignMode } from './designModes';
+import { DESIGN_MODES, PICK_LETTER_ERROR, PICK_WITHOUT_DESIGN_ERROR, isDesignMode, pickLetter } from './designModes';
 
 const failure = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
 
@@ -15,7 +15,7 @@ export function createDesignAgentTool(service: DesignService): AgentToolContribu
         mode: {
           type: 'string',
           enum: [...DESIGN_MODES],
-          description: 'Optional prompt mode for this turn. "wireframe" produces a grayscale low-fidelity wireframe; "states" produces a component state sheet (default, hover, focus, disabled, loading, empty, error, overflow) in light and dark themes. Omit for a full visual design.',
+          description: 'Optional prompt mode for this turn. "wireframe": grayscale low-fidelity wireframe. "states": component state sheet in light and dark themes. "variations": 3 (up to 4) distinct directions A–D plus a comparison board. "pick": promote a variation; the brief must start with its letter, e.g. "B" or "B, but use A\'s navigation". Omit for a full visual design.',
         },
       },
       required: ['brief'],
@@ -30,7 +30,9 @@ export function createDesignAgentTool(service: DesignService): AgentToolContribu
       if (mode !== undefined && !isDesignMode(mode)) {
         return failure(`Unknown design mode: ${String(mode)}. Use one of: ${DESIGN_MODES.join(', ')}.`);
       }
+      if (mode === 'pick' && !pickLetter(brief)) return failure(PICK_LETTER_ERROR);
       try {
+        if (mode === 'pick' && !(await service.state(threadId))?.hasArtifacts) return failure(PICK_WITHOUT_DESIGN_ERROR);
         const result = await service.prepare(threadId, brief, { mode });
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       } catch (error) {

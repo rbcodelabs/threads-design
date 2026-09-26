@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DESIGN_MODES, isDesignMode, parseDesignModeArgs } from '../src/designModes';
+import { DESIGN_MODES, isDesignMode, parseDesignModeArgs, pickLetter } from '../src/designModes';
 
 describe('design mode parsing', () => {
   it('lists the supported modes', () => {
-    expect(DESIGN_MODES).toEqual(['wireframe', 'states']);
+    expect(DESIGN_MODES).toEqual(['wireframe', 'states', 'variations', 'pick']);
     expect(isDesignMode('states')).toBe(true);
     expect(isDesignMode('States')).toBe(false);
     expect(isDesignMode('foo')).toBe(false);
@@ -16,6 +16,9 @@ describe('design mode parsing', () => {
     ['WIREFRAME:checkout', 'wireframe', 'checkout'],
     ['  states :  the plan-picker card  ', 'states', 'the plan-picker card'],
     ['wireframe: line one\nline two', 'wireframe', 'line one\nline two'],
+    ['Variations: a pricing page', 'variations', 'a pricing page'],
+    ['pick: B, but use A\'s navigation', 'pick', 'B, but use A\'s navigation'],
+    ['PICK:c', 'pick', 'c'],
   ] as const)('parses a leading mode keyword with a colon: %j', (args, mode, brief) => {
     expect(parseDesignModeArgs(args)).toEqual({ mode, brief });
   });
@@ -29,9 +32,22 @@ describe('design mode parsing', () => {
     'wireframe a billing page',
     'foo: a billing page',
     'wireframes: a billing page',
+    'variations of a billing page',
+    'pick the best layout',
     'a page with states: loading and error',
     '',
   ])('treats %j as a plain brief', args => {
     expect(parseDesignModeArgs(args)).toEqual({ brief: args });
+  });
+
+  it.each([
+    ['B', 'B'], ['b', 'B'], ['  d  ', 'D'], ['B, but use A\'s navigation', 'B'], ['a: tighter spacing', 'A'],
+    ['C. make it darker', 'C'], ['C - denser table', 'C'], ['C — denser table', 'C'], ['a\twith notes', 'A'],
+  ])('reads pick letter from %j', (brief, letter) => {
+    expect(pickLetter(brief)).toBe(letter);
+  });
+
+  it.each(['', 'Bold', 'E', 'AB', 'option B', '1', 'B2', '(B)'])('rejects pick brief %j', brief => {
+    expect(pickLetter(brief)).toBeUndefined();
   });
 });

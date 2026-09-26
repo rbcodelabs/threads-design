@@ -25,8 +25,10 @@ A mode changes the instructions for one design turn. It does not create a new ar
 
 - `/design wireframe: a billing settings page` produces a grayscale, low-fidelity wireframe that focuses on layout, hierarchy, and flows. If the thread already has a design, the wireframe reduces it to its structure.
 - `/design states: the plan-picker card` builds a component state sheet. It covers default, hover, focus-visible, pressed, disabled, loading, empty, error, and overflow states, in light and dark themes.
+- `/design variations: a pricing page` produces three distinct directions (four if the brief asks), labeled A–D. Each is a full page snapshot in `variations/<letter>/`, and the root page becomes a comparison board that previews them side by side.
+- `/design pick: B` promotes direction B to the root page and builds it out fully. Notes may follow the letter, for example `/design pick: B, but use A's navigation`. The `variations/` folder is kept, so you can pick again. Pick only works in a thread that already has a design. It cannot start a new thread.
 
-The colon is required, so `/design states of the union dashboard` is an ordinary brief. In a thread that already has a design, a bare `/design wireframe:` or `/design states:` runs that mode against the existing design. `EnterDesignMode` accepts the same modes through its optional `mode` argument.
+The colon is required, so `/design states of the union dashboard` is an ordinary brief. In a thread that already has a design, a bare `/design wireframe:`, `/design states:`, or `/design variations:` runs that mode against the existing design. `EnterDesignMode` accepts the same modes through its optional `mode` argument.
 
 ## Installation
 

@@ -1,5 +1,14 @@
 import type { SlashCommandContribution, SlashCommandResult } from './contracts';
-import { parseDesignModeArgs, type DesignMode } from './designModes';
+import {
+  DESIGN_MODE_LIST,
+  PICK_DISPATCH_ERROR,
+  PICK_EMPTY_ERROR,
+  PICK_LETTER_ERROR,
+  PICK_WITHOUT_DESIGN_ERROR,
+  parseDesignModeArgs,
+  pickLetter,
+  type DesignMode,
+} from './designModes';
 
 export interface DesignSlashCommandDependencies {
   getState(threadId: string): Promise<{ hasArtifacts: boolean; existingTitle?: string } | null> | { hasArtifacts: boolean; existingTitle?: string } | null;
@@ -15,19 +24,26 @@ const errorMessage = (error: unknown): string => error instanceof Error ? error.
 const MODE_EXAMPLE = '/design wireframe: a billing settings page';
 // Only forward a mode when one was requested so default calls keep their exact shape.
 const modeArgs = (mode: DesignMode | undefined): [] | [DesignMode] => mode ? [mode] : [];
+const MODE_USAGE = `/design <brief> or /design <mode>: <brief> (${DESIGN_MODE_LIST})`;
 
 /** Design behavior with host adapters; command views know only the contribution contract. */
 export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): SlashCommandContribution {
   return {
     name: 'design',
     thread: {
-      description: 'Create or revise a live static UI artifact: /design <brief>, or /design wireframe: | states: <brief>',
+      description: `Create or revise a live static UI artifact: ${MODE_USAGE}`,
       invoke: async (context, host) => {
         if (host.signal.aborted) return cancelled();
         const threadId = context.threadId;
         const state = threadId ? await deps.getState(threadId) : null;
         if (!threadId || !state) return { status: 'ok' };
         const { mode, brief } = parseDesignModeArgs(context.args);
+        if (mode === 'pick') {
+          // Unlike other modes, pick needs a letter and existing variations; fail before preparing.
+          if (!brief) return failure(PICK_EMPTY_ERROR);
+          if (!state.hasArtifacts) return failure(PICK_WITHOUT_DESIGN_ERROR);
+          if (!pickLetter(brief)) return failure(PICK_LETTER_ERROR);
+        }
         if (!brief && !state.hasArtifacts) {
           if (mode) return failure(`Include a brief after the mode — e.g. ${MODE_EXAMPLE}`);
           return failure('Include a brief — e.g. /design a responsive pricing page for a developer tool');
@@ -61,10 +77,11 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
       },
     },
     dispatch: {
-      description: 'Dispatch a thread with a live static UI artifact: /design <brief>, or /design wireframe: | states: <brief>',
+      description: `Dispatch a thread with a live static UI artifact: ${MODE_USAGE}`,
       invoke: async (context, host) => {
         if (host.signal.aborted) return cancelled();
         const { mode, brief } = parseDesignModeArgs(context.args);
+        if (mode === 'pick') return failure(brief ? PICK_DISPATCH_ERROR : PICK_EMPTY_ERROR);
         if (mode && !brief) return failure(`Include a brief after the mode — e.g. "${MODE_EXAMPLE}"`);
         if (!brief) return failure('Include a brief — e.g. "/design a responsive pricing page for a developer tool"');
         if (context.hasImages || context.hasAttachment) {
