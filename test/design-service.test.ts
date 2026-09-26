@@ -71,6 +71,19 @@ describe('DesignService', () => {
     expect(picked.instructions).toContain('B, but use A\'s navigation');
   });
 
+  it('keeps the existing artifact title when annotating with spec', async () => {
+    const { api, artifacts } = apiHarness();
+    const service = new DesignService(api, fileFs);
+    await service.prepare('thread-1', 'Billing settings');
+
+    const specced = await service.prepare('thread-1', 'the pricing page', { mode: 'spec' });
+
+    expect(specced.created).toBe(false);
+    expect(specced.artifact.title).toBe('Billing settings');
+    expect(api.artifacts.update).toHaveBeenCalledWith(expect.anything(), 'thread-1', 'design-thread-1', { data: expect.objectContaining({ title: 'Billing settings' }) });
+    expect(specced.instructions).toContain('Mode: spec');
+  });
+
   it('captures the host theme only when creating a new artifact', async () => {
     const { api, artifacts } = apiHarness();
     const theme = {

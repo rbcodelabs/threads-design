@@ -3,7 +3,7 @@ import { DESIGN_MODES, isDesignMode, parseDesignModeArgs, pickLetter } from '../
 
 describe('design mode parsing', () => {
   it('lists the supported modes', () => {
-    expect(DESIGN_MODES).toEqual(['wireframe', 'states', 'variations', 'pick']);
+    expect(DESIGN_MODES).toEqual(['wireframe', 'states', 'variations', 'pick', 'spec']);
     expect(isDesignMode('states')).toBe(true);
     expect(isDesignMode('States')).toBe(false);
     expect(isDesignMode('foo')).toBe(false);
@@ -19,6 +19,8 @@ describe('design mode parsing', () => {
     ['Variations: a pricing page', 'variations', 'a pricing page'],
     ['pick: B, but use A\'s navigation', 'pick', 'B, but use A\'s navigation'],
     ['PICK:c', 'pick', 'c'],
+    ['spec: the pricing page', 'spec', 'the pricing page'],
+    ['SPEC:', 'spec', ''],
   ] as const)('parses a leading mode keyword with a colon: %j', (args, mode, brief) => {
     expect(parseDesignModeArgs(args)).toEqual({ mode, brief });
   });
@@ -34,6 +36,8 @@ describe('design mode parsing', () => {
     'wireframes: a billing page',
     'variations of a billing page',
     'pick the best layout',
+    'specification of a billing page',
+    'a spec: for review',
     'a page with states: loading and error',
     '',
   ])('treats %j as a plain brief', args => {

@@ -201,6 +201,16 @@ ${MODE_OVERRIDE}
 - Otherwise promote that direction into the root index.html, styles.css, and app.js as a fully built-out, polished page: complete every section, state, and mobile layout that the board preview omitted.
 - Apply any notes from the brief; they may reference other variations' folders.
 - Remove the comparison board from the root files, but keep the entire variations/ folder intact so the user can pick again.`,
+  spec: `Mode: spec
+${MODE_OVERRIDE}
+- This is an overlay, not a redesign. Do not rewrite index.html, styles.css, or app.js content or layout; the existing design must render exactly as it does today with the overlay off.
+- Add two new files at the artifact root: spec.css and spec.js. Do not put spec code inline in existing files; inline JavaScript is still blocked by the artifact CSP.
+- Link spec.css and spec.js from index.html's existing head and before </body>, the same way styles.css and app.js are already linked.
+- spec.js adds a toggle for a single boolean state, for example by flipping a class such as spec-mode on <html> or <body>. Pressing S (only when focus is not in a text input, textarea, or contenteditable) toggles it, and so does clicking a small floating "Show spec" button. Both must work. The button must be reachable and labeled for screen readers and must not overlap or block any existing interactive element.
+- When toggled on, spec.css reveals redline overlays scoped under that class: for every meaningful layout region and component, show its outer spacing (margin) and inner spacing (padding) as labeled measurements in px, its computed or intended type size and weight where notable, and the name of the component or region (for example "Card / Primary Button"). Where the design defines color tokens (for example CSS custom properties), label swatches with the token name and value, not just a color chip.
+- The overlay must never shift layout or reflow the underlying design. Use non-intrusive techniques such as absolutely or overlay-positioned labels, outlines, and pseudo-elements rather than adding real padding, margin, or borders that would push content.
+- The overlay must work across both the desktop and mobile layouts already in the design, updating its measurements and labels as the design responds to viewport width.
+- Keep everything static: no network calls, no server, no remote fonts, and every other artifact rule below still applies.`,
 };
 
 export function designKickoffMessage(artifact: DesignArtifact, brief: string, mode?: DesignMode): string {

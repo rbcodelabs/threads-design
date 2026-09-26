@@ -101,6 +101,7 @@ describe('design artifact contract', () => {
       ['states', ['component state sheet', 'focus-visible', 'overflow (very long content)', 'light and dark themes side by side', '.is-hover', 'naming the component']],
       ['variations', ['3 genuinely distinct design directions', 'never more than 4', 'Recolors of one layout do not count', 'variations/<LETTER>/index.html', 'comparison board', 'Do not use iframes', '1440px-wide inner canvas under .variation-a', '/design pick: A', 'replace its contents']],
       ['pick', ['Read variations/<LETTER>/', 'which variation letters do exist', 'fully built-out, polished page', 'keep the entire variations/ folder intact', 'Remove the comparison board']],
+      ['spec', ['This is an overlay, not a redesign', 'spec.css and spec.js', 'Pressing S', '"Show spec" button', 'must never shift layout or reflow', 'desktop and mobile layouts already in the design']],
     ] as const)('inserts only the %s section into the default message', (mode, phrases) => {
       const base = designKickoffMessage(artifact, 'Make a dashboard');
       const message = designKickoffMessage(artifact, 'Make a dashboard', mode);
