@@ -62,7 +62,7 @@ export default class ThreadsDesignPlugin extends Plugin {
         getState: threadId => service.state(threadId),
         isDesktopFilesystem: () => true,
         prepare: (threadId, brief, mode) => service.prepare(threadId, brief, { mode }),
-        send: async (threadId, prompt) => { await api.threads.send(threadId, { prompt, ownerPluginId: DESIGN_PROVIDER_OWNER.pluginId }); },
+        send: async (threadId, prompt) => { await api.threads.send(threadId, { prompt, ownerPluginId: DESIGN_PROVIDER_OWNER.pluginId, idempotencyKey: crypto.randomUUID() }); },
         dispatch: (brief, harness, mode) => service.dispatch(brief, harness, mode),
       })),
     ];

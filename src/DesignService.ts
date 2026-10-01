@@ -115,6 +115,7 @@ export class DesignService {
         await this.api.threads.send(handle.threadId, {
           prompt: prepared.instructions,
           ownerPluginId: DESIGN_PROVIDER_OWNER.pluginId,
+          idempotencyKey: crypto.randomUUID(),
         });
       } catch (error) {
         this.report(`Failed to start design turn: ${message(error)}`, true);
