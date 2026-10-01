@@ -22,7 +22,7 @@ export interface AgentThreadsApiV1 {
   readonly threads: {
     get(id: string): Promise<{ id: string; artifacts?: readonly ThreadArtifactRef[] } | null>;
     beginProvisional(owner: PeerIdentity, input: { title?: string; agentHarness?: AgentHarness; ownerPluginId?: string }): Promise<ProvisionalThreadHandle>;
-    send(id: string, input: { prompt: string; ownerPluginId?: string }): Promise<{ runId: string }>;
+    send(id: string, input: { prompt: string; ownerPluginId?: string; idempotencyKey?: string }): Promise<{ runId: string }>;
     open(id: string): Promise<void>;
     permissions(id: string): Promise<ThreadPermissionSnapshot | null>;
   };

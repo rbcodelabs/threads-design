@@ -35,6 +35,7 @@ describe('DesignService', () => {
     expect(api.artifacts.invokeAction).toHaveBeenCalledWith('new-thread', 'design-new-thread', 'preview');
     expect(handle.commit).toHaveBeenCalledOnce();
     expect(api.threads.send).toHaveBeenCalledAfter(handle.commit);
+    expect(api.threads.send).toHaveBeenCalledWith('new-thread', expect.objectContaining({ ownerPluginId: expect.any(String), idempotencyKey: expect.stringMatching(/.+/) }));
     expect(handle.rollback).not.toHaveBeenCalled();
   });
 
