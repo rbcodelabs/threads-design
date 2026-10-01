@@ -17,6 +17,7 @@ type Disposable = { dispose(): void };
 
 export default class ThreadsDesignPlugin extends Plugin {
   private registrations: Disposable[] = [];
+  private startupNoticeTimer: ReturnType<typeof setTimeout> | null = null;
   private service: DesignService | null = null;
 
   async onload(): Promise<void> {
@@ -25,10 +26,17 @@ export default class ThreadsDesignPlugin extends Plugin {
     };
     this.registerEvent(workspace.on('claude-threads:api-ready', () => { void this.connect(); }) as never);
     this.registerEvent(workspace.on('claude-threads:api-stopping', () => { void this.disconnect(); }) as never);
-    await this.connect();
+    await this.connect(true);
+    if (!this.service) {
+      // Agent Threads may simply load after us; `api-ready` will retry. Only warn if it never shows up.
+      this.startupNoticeTimer = setTimeout(() => {
+        if (!this.service) this.notifyUnavailable();
+      }, 15000);
+    }
   }
 
   async onunload(): Promise<void> {
+    if (this.startupNoticeTimer) clearTimeout(this.startupNoticeTimer);
     await this.disconnect();
   }
 
@@ -37,11 +45,15 @@ export default class ThreadsDesignPlugin extends Plugin {
     return (plugins?.['claude-threads'] as AgentThreadsPlugin | undefined)?.api?.v1;
   }
 
-  private async connect(): Promise<void> {
+  private notifyUnavailable(): void {
+    new Notice('Design for Agent Threads requires Agent Threads with public API v1.');
+  }
+
+  private async connect(quietIfMissing = false): Promise<void> {
     await this.disconnect();
     const api = this.getApi();
     if (!api || api.apiVersion !== 1) {
-      new Notice('Design for Agent Threads requires Agent Threads with public API v1.');
+      if (!quietIfMissing) this.notifyUnavailable();
       return;
     }
     const missing = REQUIRED_CAPABILITIES.filter(capability => !api.capabilities.includes(capability));
