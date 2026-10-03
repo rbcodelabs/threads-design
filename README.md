@@ -15,7 +15,13 @@ Enable Agent Threads first, then enable **Design for Agent Threads**. The plugin
 - the `EnterDesignMode` agent tool
 - presentation, preview, capture, and source-reveal actions for `design-static` artifacts
 
-Artifacts use host-allocated storage beneath `.geode/artifacts/`. A failed new-thread preparation rolls back both the provisional thread and allocated storage. Once preparation commits, a later agent-session failure keeps the artifact intact and is reported to the user.
+Designs are stored in a visible vault folder, `<vault>/Designs/<title-slug>/` (the folder name is the `DESIGNS_FOLDER_NAME` constant, `Designs`). The plugin asks the host for visible storage (`allocateStorage(..., { location: 'visible', folderName })`), where `folderName` is a lowercase kebab-case ASCII slug of the design title (at most 60 characters, falling back to the artifact id). The host sanitizes the name and adds `-2`, `-3`, … on collision, and the plugin always uses the path the host returns. The folder name is only a label: a design's identity is the `id` and `createdByThreadId` in its `artifact.json`, so you can rename the folder in the vault without breaking anything the plugin looks up by identity.
+
+Fallback: a host that does not support visible storage ignores the request and returns a path beneath `.geode/artifacts/`. Design uses that path unchanged, with no error.
+
+Migration: on load, Design moves each of its existing designs from `.geode/artifacts/` into a host-allocated `Designs/` folder and updates the stored artifact paths. It is idempotent and non-fatal. It never overwrites existing files (a folder that would collide is left alone), skips silently when the host has no visible storage, and leaves the original folder in place and working if a move or metadata update fails.
+
+A failed new-thread preparation rolls back both the provisional thread and allocated storage. Once preparation commits, a later agent-session failure keeps the artifact intact and is reported to the user.
 
 New artifacts start with a compact loading state that matches the host's current light or dark palette and interface font. This theme snapshot is captured only at creation; existing artifacts and agent-authored styles are preserved.
 

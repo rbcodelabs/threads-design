@@ -57,10 +57,6 @@ export function designTitle(brief: string): string {
   return firstLine.length <= 120 ? firstLine : `${firstLine.slice(0, 117)}…`;
 }
 
-export function designArtifactRoot(vaultRoot: string, threadId: string): string {
-  return path.join(vaultRoot, '.geode', 'artifacts', artifactIdForThread(threadId));
-}
-
 export function buildDesignManifest(threadId: string, brief: string): DesignArtifactManifest {
   return {
     schemaVersion: DESIGN_ARTIFACT_SCHEMA_VERSION,
@@ -150,7 +146,7 @@ export async function scaffoldDesignArtifact(
     providerId: DESIGN_PROVIDER_ID,
     schemaVersion: DESIGN_ARTIFACT_SCHEMA_VERSION,
     // Host-visible so thread deletion can collect it; re-validated by the host
-    // against the vault artifact root before it is ever stored or removed.
+    // against its allowed artifact roots before it is ever stored or removed.
     storageRoot: root,
     root,
     manifestPath: path.join(root, 'artifact.json'),
