@@ -59,9 +59,9 @@ function apiFor(designs: ReturnType<typeof hiddenDesign>[], visibleBase = VISIBL
   const api: any = {
     artifacts: {
       list: vi.fn(async (threadId: string) => [...refs.values()].filter(r => r.id === `design-${threadId}`)),
-      allocateStorage: vi.fn(async (_t: string, artifactId: string, options?: { folderName?: string }) => ({
+      allocateStorage: vi.fn(async (_t: string, artifactId: string, options?: { folderName?: string; owner?: { pluginId: string } }) => options?.owner?.pluginId ? ({
         success: true, status: 'allocated', artifactId, path: `${visibleBase}/${options?.folderName ?? artifactId}`,
-      })),
+      }) : { success: false, message: 'owner required', artifactId, status: 'rejected' }),
       update: vi.fn(async (_o: unknown, _t: string, id: string, patch: any) => {
         const ref = refs.get(id)!;
         ref.data = patch.data;
@@ -83,7 +83,7 @@ describe('migrateHiddenDesigns', () => {
 
     const result = await migrateHiddenDesigns({ api, fs, owner, hiddenRoot: HIDDEN });
 
-    expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('t1', 'design-t1', { location: 'visible', folderName: 'billing-settings' });
+    expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('t1', 'design-t1', { location: 'visible', folderName: 'billing-settings', owner: { pluginId: owner.pluginId } });
     const target = `${VISIBLE}/billing-settings`;
     expect(fs.files.has(`${target}/index.html`)).toBe(true);
     expect(fs.files.has(`${target}/artifact.json`)).toBe(true);

@@ -75,6 +75,7 @@ export class DesignService {
         const allocation = await this.api.artifacts.allocateStorage(threadId, artifactId, {
           location: 'visible',
           folderName: designFolderName(designTitle(brief), artifactId),
+          owner: { pluginId: DESIGN_PROVIDER_OWNER.pluginId },
         });
         if (!allocation.success) throw new Error(allocation.message);
         allocatedRoot = allocation.path;

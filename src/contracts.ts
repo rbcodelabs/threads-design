@@ -15,9 +15,11 @@ export type StorageAllocationResult = { success: true; path: string; artifactId:
 /**
  * `visible` asks the host to create a folder named `folderName` under its configured visible root and
  * a namespace it derives from the caller (sanitized and collision-suffixed by the host; the plugin
- * uses whatever path is returned). Hosts without the capability ignore the options and return the hidden path.
+ * uses whatever path is returned).
+ * Visible allocations require `owner`; the host derives the namespace from `owner.pluginId`.
+ * Hosts without the capability ignore the options and return the hidden path.
  */
-export interface StorageAllocationOptions { readonly location?: 'hidden' | 'visible'; readonly folderName?: string }
+export interface StorageAllocationOptions { readonly location?: 'hidden' | 'visible'; readonly folderName?: string; readonly owner?: Pick<PeerIdentity, 'pluginId'> }
 /** Advertised by hosts that honour `StorageAllocationOptions`; optional, never required. */
 export const VISIBLE_STORAGE_CAPABILITY = 'artifacts.visibleStorage';
 export interface AgentToolHost { permissions(): Promise<ThreadPermissionSnapshot | null>; allocateStorage(id: string): Promise<StorageAllocationResult> }

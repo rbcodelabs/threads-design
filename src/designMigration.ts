@@ -99,6 +99,7 @@ export async function migrateHiddenDesigns({ api, fs, owner, hiddenRoot }: Migra
       const allocation = await api.artifacts.allocateStorage(manifest.threadId, manifest.id, {
         location: 'visible',
         folderName: designFolderName(manifest.title || ref.title, manifest.id),
+        owner: { pluginId: owner.pluginId },
       });
       if (!allocation.success) { result.failed++; continue; }
       // Host without visible storage: nothing can move, and every other design would get the same answer.

@@ -11,7 +11,7 @@ function apiHarness() {
     },
     artifacts: {
       list: vi.fn(async () => artifacts),
-      allocateStorage: vi.fn(async (_threadId: string, artifactId: string) => ({ success: true, status: 'allocated', artifactId, path: `/vault/${artifactId}` })),
+      allocateStorage: vi.fn(async (_threadId: string, artifactId: string, options?: { owner?: { pluginId: string } }) => options?.owner?.pluginId ? ({ success: true, status: 'allocated', artifactId, path: `/vault/${artifactId}` }) : ({ success: false, message: 'owner required', artifactId, status: 'rejected' })),
       attach: vi.fn(async (_owner: unknown, _threadId: string, ref: unknown) => { artifacts.push(ref); return { success: true }; }),
       update: vi.fn(async () => ({ success: true })),
       invokeAction: vi.fn(async () => ({ status: 'ok' })),
@@ -120,7 +120,7 @@ describe('DesignService', () => {
 
       await service.prepare('thread-1', 'wireframe: Billing Settings Page!');
 
-      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'billing-settings-page' });
+      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'billing-settings-page', owner: { pluginId: 'threads-design' } });
     });
 
     it('falls back to the artifact id when the title yields no slug', async () => {
@@ -129,7 +129,7 @@ describe('DesignService', () => {
 
       await service.prepare('thread-1', '日本語');
 
-      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'design-thread-1' });
+      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'design-thread-1', owner: { pluginId: 'threads-design' } });
     });
 
     it('uses the path the host returns for scaffold, attach and kickoff', async () => {
@@ -155,7 +155,7 @@ describe('DesignService', () => {
 
       const prepared = await service.prepare('thread-1', 'Billing');
 
-      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'billing' });
+      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'billing', owner: { pluginId: 'threads-design' } });
       expect(prepared.artifact.root).toBe(hostPath);
     });
 
