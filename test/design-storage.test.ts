@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DESIGNS_FOLDER_NAME, designFolderName, isHiddenArtifactPath, slugifyFolderName } from '../src/designStorage';
+import { designFolderName, isHiddenArtifactPath, isVisibleArtifactPath, slugifyFolderName } from '../src/designStorage';
 
 describe('design storage helpers', () => {
-  it('names the visible folder Designs', () => {
-    expect(DESIGNS_FOLDER_NAME).toBe('Designs');
-  });
-
   it('slugifies to lowercase kebab-case ASCII', () => {
     expect(slugifyFolderName('Billing Settings Page')).toBe('billing-settings-page');
     expect(slugifyFolderName('  Café — Menü / v2!! ')).toBe('cafe-menu-v2');
@@ -31,7 +27,12 @@ describe('design storage helpers', () => {
   it('detects the hidden artifact area on posix and windows paths', () => {
     expect(isHiddenArtifactPath('/vault/.geode/artifacts/design-x')).toBe(true);
     expect(isHiddenArtifactPath('C:\\vault\\.geode\\artifacts\\design-x')).toBe(true);
-    expect(isHiddenArtifactPath('/vault/Designs/design-x')).toBe(false);
+    expect(isHiddenArtifactPath('/vault/Artifacts/design/design-x')).toBe(false);
     expect(isHiddenArtifactPath('/vault/notes/.geodex/artifacts/x')).toBe(false);
+  });
+
+  it('treats any path outside .geode/artifacts as visible, whatever the host root is called', () => {
+    for (const p of ['/vault/Artifacts/design/x', '/vault/Studio/design/x']) expect(isVisibleArtifactPath(p)).toBe(true);
+    expect(isVisibleArtifactPath('/vault/.geode/artifacts/design-x')).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { migrateHiddenDesigns, type MigrationFs } from '../src/designMigration';
 
 const VAULT = '/vault';
+const VISIBLE = `${VAULT}/Artifacts/design`;
 const HIDDEN = `${VAULT}/.geode/artifacts`;
 
 /** In-memory fs: files are tracked by full path; directories are derived or explicitly created. */
@@ -53,7 +54,7 @@ function hiddenDesign(threadId: string, title = 'Billing settings') {
   return { id, root, data, files };
 }
 
-function apiFor(designs: ReturnType<typeof hiddenDesign>[], visibleBase = `${VAULT}/Designs`) {
+function apiFor(designs: ReturnType<typeof hiddenDesign>[], visibleBase = VISIBLE) {
   const refs = new Map(designs.map(d => [d.id, { providerId: 'agent-threads.design', kind: 'design-static', schemaVersion: 1, id: d.id, title: d.data.title, data: d.data as unknown, storageRoot: d.root as string | undefined }]));
   const api: any = {
     artifacts: {
@@ -83,7 +84,7 @@ describe('migrateHiddenDesigns', () => {
     const result = await migrateHiddenDesigns({ api, fs, owner, hiddenRoot: HIDDEN });
 
     expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('t1', 'design-t1', { location: 'visible', folderName: 'billing-settings' });
-    const target = `${VAULT}/Designs/billing-settings`;
+    const target = `${VISIBLE}/billing-settings`;
     expect(fs.files.has(`${target}/index.html`)).toBe(true);
     expect(fs.files.has(`${target}/artifact.json`)).toBe(true);
     expect([...fs.files.keys()].some(p => p.startsWith(d.root))).toBe(false);
@@ -96,6 +97,19 @@ describe('migrateHiddenDesigns', () => {
     });
     expect(api.artifacts.update).toHaveBeenCalledWith(owner, 't1', 'design-t1', expect.objectContaining({ storageRoot: target }));
     expect(result).toEqual({ migrated: 1, skipped: 0, failed: 0 });
+  });
+
+  it.each(['Artifacts/design', 'Studio/pm/designs', 'Work'])('migrates into whatever visible root the host allocates (%s)', async root => {
+    const d = hiddenDesign('t1');
+    const fs = fakeFs(d.files);
+    const { api, refs } = apiFor([d], `${VAULT}/${root}`);
+
+    const result = await migrateHiddenDesigns({ api, fs, owner, hiddenRoot: HIDDEN });
+
+    const target = `${VAULT}/${root}/billing-settings`;
+    expect(result).toEqual({ migrated: 1, skipped: 0, failed: 0 });
+    expect(fs.files.has(`${target}/index.html`)).toBe(true);
+    expect(refs.get('design-t1')!.storageRoot).toBe(target);
   });
 
   it('is idempotent: a second run finds nothing to do', async () => {
@@ -138,7 +152,7 @@ describe('migrateHiddenDesigns', () => {
 
     expect(result).toEqual({ migrated: 0, skipped: 0, failed: 1 });
     for (const p of Object.keys(d.files)) expect(fs.files.has(p)).toBe(true);
-    expect([...fs.files.keys()].some(p => p.startsWith(`${VAULT}/Designs/`))).toBe(false);
+    expect([...fs.files.keys()].some(p => p.startsWith(`${VISIBLE}/`))).toBe(false);
   });
 
   it('leaves the original in place when a move throws midway', async () => {
@@ -157,12 +171,12 @@ describe('migrateHiddenDesigns', () => {
     expect(result.failed).toBe(1);
     expect(api.artifacts.update).not.toHaveBeenCalled();
     for (const p of Object.keys(d.files)) expect(fs.files.has(p)).toBe(true);
-    expect([...fs.files.keys()].some(p => p.startsWith(`${VAULT}/Designs/`))).toBe(false);
+    expect([...fs.files.keys()].some(p => p.startsWith(`${VISIBLE}/`))).toBe(false);
   });
 
   it('never overwrites: skips when the visible target already holds a colliding file', async () => {
     const d = hiddenDesign('t1');
-    const target = `${VAULT}/Designs/billing-settings`;
+    const target = `${VISIBLE}/billing-settings`;
     const fs = fakeFs({ ...d.files, [`${target}/index.html`]: 'USER CONTENT' });
     const { api } = apiFor([d]);
 

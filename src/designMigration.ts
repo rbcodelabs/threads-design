@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import type { AgentThreadsApiV1, PeerIdentity, ThreadArtifactRef } from './contracts';
 import type { DesignArtifact } from './designArtifact';
 import { DESIGN_ARTIFACT_KIND, DESIGN_PROVIDER_ID } from './designArtifactProvider';
-import { designFolderName, isHiddenArtifactPath } from './designStorage';
+import { designFolderName, isVisibleArtifactPath } from './designStorage';
 
 /** Minimal fs surface so migration is testable without touching disk. */
 export interface MigrationFs {
@@ -102,7 +102,7 @@ export async function migrateHiddenDesigns({ api, fs, owner, hiddenRoot }: Migra
       });
       if (!allocation.success) { result.failed++; continue; }
       // Host without visible storage: nothing can move, and every other design would get the same answer.
-      if (isHiddenArtifactPath(allocation.path) || sameDir(allocation.path, dir)) return result;
+      if (!isVisibleArtifactPath(allocation.path) || sameDir(allocation.path, dir)) return result;
 
       if (await moveDesign({ api, fs, owner }, manifest.threadId, ref, data, dir, allocation.path)) result.migrated++;
       else result.skipped++;

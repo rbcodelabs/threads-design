@@ -1,6 +1,3 @@
-/** Visible vault folder (host-created) that holds one subfolder per design. */
-export const DESIGNS_FOLDER_NAME = 'Designs';
-
 /** Longest folder name we request; the host may append a collision suffix. */
 export const MAX_FOLDER_NAME_LENGTH = 60;
 
@@ -28,4 +25,12 @@ export function designFolderName(title: string, artifactId: string): string {
 /** True for paths in the legacy hidden `.geode/artifacts/` area. */
 export function isHiddenArtifactPath(target: string): boolean {
   return `/${target.replace(/\\/g, '/')}/`.includes('/.geode/artifacts/');
+}
+
+/**
+ * The only rule for classifying a host-returned path: under `.geode/artifacts` is hidden, anything
+ * else is visible. The visible root and plugin namespace are chosen by the host, never by this plugin.
+ */
+export function isVisibleArtifactPath(target: string): boolean {
+  return !isHiddenArtifactPath(target);
 }

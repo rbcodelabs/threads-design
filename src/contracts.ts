@@ -13,8 +13,9 @@ export interface SlashCommandContribution { readonly name: string; readonly thre
 export interface ThreadPermissionSnapshot { readonly effectivePermissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto'; readonly planApprovalPending: boolean }
 export type StorageAllocationResult = { success: true; path: string; artifactId: string; status: 'allocated' | 'existing' } | { success: false; message: string; artifactId: string; status: string };
 /**
- * `visible` asks the host to create `<vault>/Designs/<folderName>` (sanitized and collision-suffixed
- * by the host). Hosts without the capability ignore the options and return the hidden path.
+ * `visible` asks the host to create a folder named `folderName` under its configured visible root and
+ * a namespace it derives from the caller (sanitized and collision-suffixed by the host; the plugin
+ * uses whatever path is returned). Hosts without the capability ignore the options and return the hidden path.
  */
 export interface StorageAllocationOptions { readonly location?: 'hidden' | 'visible'; readonly folderName?: string }
 /** Advertised by hosts that honour `StorageAllocationOptions`; optional, never required. */

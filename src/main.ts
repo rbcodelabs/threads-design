@@ -92,7 +92,7 @@ export default class ThreadsDesignPlugin extends Plugin {
     void this.migrateLegacyDesigns(api);
   }
 
-  /** Moves pre-existing hidden designs into the visible Designs folder; failures never affect the plugin. */
+  /** Moves pre-existing hidden designs into host-allocated visible storage; failures never affect the plugin. */
   private async migrateLegacyDesigns(api: AgentThreadsApiV1): Promise<void> {
     try {
       const basePath = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
