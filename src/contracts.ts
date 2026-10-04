@@ -12,6 +12,16 @@ export interface SlashCommandArgCompletion { readonly name: string; readonly des
 export interface SlashCommandContribution { readonly name: string; readonly thread?: { description: string; argCompletions?: readonly SlashCommandArgCompletion[]; invoke(context: SlashCommandContext, host: SlashCommandHost): Promise<SlashCommandResult> }; readonly dispatch?: { description: string; argCompletions?: readonly SlashCommandArgCompletion[]; invoke(context: SlashCommandContext, host: SlashCommandHost): Promise<SlashCommandResult> } }
 export interface ThreadPermissionSnapshot { readonly effectivePermissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto'; readonly planApprovalPending: boolean }
 export type StorageAllocationResult = { success: true; path: string; artifactId: string; status: 'allocated' | 'existing' } | { success: false; message: string; artifactId: string; status: string };
+/**
+ * `visible` asks the host to create a folder named `folderName` under its configured visible root and
+ * a namespace it derives from the caller (sanitized and collision-suffixed by the host; the plugin
+ * uses whatever path is returned).
+ * Visible allocations require `owner`; the host derives the namespace from `owner.pluginId`.
+ * Hosts without the capability ignore the options and return the hidden path.
+ */
+export interface StorageAllocationOptions { readonly location?: 'hidden' | 'visible'; readonly folderName?: string; readonly owner?: Pick<PeerIdentity, 'pluginId'> }
+/** Advertised by hosts that honour `StorageAllocationOptions`; optional, never required. */
+export const VISIBLE_STORAGE_CAPABILITY = 'artifacts.visibleStorage';
 export interface AgentToolHost { permissions(): Promise<ThreadPermissionSnapshot | null>; allocateStorage(id: string): Promise<StorageAllocationResult> }
 export interface AgentToolContribution { readonly name: string; readonly description: string; readonly inputSchema: unknown; readonly alwaysLoad?: boolean; readonly requiresApproval?: boolean; invoke(threadId: string, args: Record<string, unknown>, host: AgentToolHost): Promise<{ content: readonly { type: 'text'; text: string }[]; isError?: boolean }> }
 export interface ProvisionalThreadHandle { readonly threadId: string; commit(): Promise<unknown>; rollback(): Promise<unknown> }
@@ -28,7 +38,7 @@ export interface AgentThreadsApiV1 {
   };
   readonly artifacts: {
     list(threadId: string): Promise<readonly ThreadArtifactRef[]>;
-    allocateStorage(threadId: string, artifactId: string): Promise<StorageAllocationResult>;
+    allocateStorage(threadId: string, artifactId: string, options?: StorageAllocationOptions): Promise<StorageAllocationResult>;
     attach(owner: PeerIdentity, threadId: string, ref: ThreadArtifactRef): Promise<{ success: boolean; message?: string }>;
     update(owner: PeerIdentity, threadId: string, artifactId: string, patch: { title?: string; data?: unknown; storageRoot?: string }): Promise<{ success: boolean; message?: string }>;
     invokeAction(threadId: string, artifactId: string, actionId: string): Promise<ArtifactActionResult>;

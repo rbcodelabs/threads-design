@@ -15,6 +15,7 @@ import {
   DESIGN_PROVIDER_OWNER,
 } from './designArtifactProvider';
 import type { DesignMode } from './designModes';
+import { designFolderName } from './designStorage';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
 
 export interface PrepareDesignOptions {
@@ -69,7 +70,13 @@ export class DesignService {
         if (!updated.success) throw new Error(updated.message ?? 'Could not update design artifact.');
       } else {
         const artifactId = artifactIdForThread(threadId);
-        const allocation = await this.api.artifacts.allocateStorage(threadId, artifactId);
+        // Folder name is only a readable label; identity is the artifact id / createdByThreadId.
+        // Hosts without visible storage ignore the options and return the hidden path, which we use as-is.
+        const allocation = await this.api.artifacts.allocateStorage(threadId, artifactId, {
+          location: 'visible',
+          folderName: designFolderName(designTitle(brief), artifactId),
+          owner: { pluginId: DESIGN_PROVIDER_OWNER.pluginId },
+        });
         if (!allocation.success) throw new Error(allocation.message);
         allocatedRoot = allocation.path;
         artifact = await scaffoldDesignArtifact(threadId, allocation.path, brief, Date.now(), this.fileFs, this.provideTheme());

@@ -5,6 +5,8 @@ import { createDesignAgentTool } from './designAgentTool';
 import { createDesignArtifactContribution, DESIGN_PROVIDER_OWNER } from './designArtifactProvider';
 import { createDesignSlashCommand } from './designSlashCommand';
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { migrateHiddenDesigns } from './designMigration';
 import { captureHostTheme } from './hostTheme';
 
 const REQUIRED_CAPABILITIES = [
@@ -87,6 +89,28 @@ export default class ThreadsDesignPlugin extends Plugin {
     }
     this.service = service;
     this.registrations = registrations;
+    void this.migrateLegacyDesigns(api);
+  }
+
+  /** Moves pre-existing hidden designs into host-allocated visible storage; failures never affect the plugin. */
+  private async migrateLegacyDesigns(api: AgentThreadsApiV1): Promise<void> {
+    try {
+      const basePath = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+      if (!basePath) return;
+      await migrateHiddenDesigns({
+        api,
+        owner: DESIGN_PROVIDER_OWNER,
+        hiddenRoot: path.join(basePath, '.geode', 'artifacts'),
+        fs: {
+          readdir: target => fs.readdir(target),
+          readFile: target => fs.readFile(target, 'utf8'),
+          rename: (from, to) => fs.rename(from, to),
+          rmdir: target => fs.rmdir(target),
+        },
+      });
+    } catch {
+      // Migration is best-effort; the original directories remain valid.
+    }
   }
 
   private async disconnect(): Promise<void> {

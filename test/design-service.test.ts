@@ -11,7 +11,7 @@ function apiHarness() {
     },
     artifacts: {
       list: vi.fn(async () => artifacts),
-      allocateStorage: vi.fn(async (_threadId: string, artifactId: string) => ({ success: true, status: 'allocated', artifactId, path: `/vault/${artifactId}` })),
+      allocateStorage: vi.fn(async (_threadId: string, artifactId: string, options?: { owner?: { pluginId: string } }) => options?.owner?.pluginId ? ({ success: true, status: 'allocated', artifactId, path: `/vault/${artifactId}` }) : ({ success: false, message: 'owner required', artifactId, status: 'rejected' })),
       attach: vi.fn(async (_owner: unknown, _threadId: string, ref: unknown) => { artifacts.push(ref); return { success: true }; }),
       update: vi.fn(async () => ({ success: true })),
       invokeAction: vi.fn(async () => ({ status: 'ok' })),
@@ -111,6 +111,76 @@ describe('DesignService', () => {
     expect(handle.rollback).toHaveBeenCalledOnce();
     expect(handle.commit).not.toHaveBeenCalled();
     expect(api.threads.send).not.toHaveBeenCalled();
+  });
+
+  describe('visible storage', () => {
+    it('requests visible allocation named by the slugged title', async () => {
+      const { api } = apiHarness();
+      const service = new DesignService(api, fileFs);
+
+      await service.prepare('thread-1', 'wireframe: Billing Settings Page!');
+
+      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'billing-settings-page', owner: { pluginId: 'threads-design' } });
+    });
+
+    it('falls back to the artifact id when the title yields no slug', async () => {
+      const { api } = apiHarness();
+      const service = new DesignService(api, fileFs);
+
+      await service.prepare('thread-1', '日本語');
+
+      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'design-thread-1', owner: { pluginId: 'threads-design' } });
+    });
+
+    it('uses the path the host returns for scaffold, attach and kickoff', async () => {
+      const { api } = apiHarness();
+      api.artifacts.allocateStorage.mockResolvedValueOnce({ success: true, status: 'allocated', artifactId: 'design-thread-1', path: '/vault/Artifacts/design/billing-2' });
+      const writes: string[] = [];
+      const recordingFs: any = { mkdir: vi.fn(async () => {}), writeFile: vi.fn(async (target: string) => { writes.push(target); }), rm: vi.fn(async () => {}) };
+      const service = new DesignService(api, recordingFs);
+
+      const prepared = await service.prepare('thread-1', 'Billing');
+
+      expect(prepared.artifact.root).toBe('/vault/Artifacts/design/billing-2');
+      expect(prepared.artifact.storageRoot).toBe('/vault/Artifacts/design/billing-2');
+      expect(writes.every(target => target.startsWith('/vault/Artifacts/design/billing-2/'))).toBe(true);
+      expect(api.artifacts.attach).toHaveBeenCalledWith(expect.anything(), 'thread-1', expect.objectContaining({ storageRoot: '/vault/Artifacts/design/billing-2' }));
+      expect(prepared.instructions).toContain('/vault/Artifacts/design/billing-2');
+    });
+
+    it.each(['/vault/Studio/pm/billing', '/vault/Artifacts/design/billing'])('does not assume a visible root name (%s)', async hostPath => {
+      const { api } = apiHarness();
+      api.artifacts.allocateStorage.mockResolvedValueOnce({ success: true, status: 'allocated', artifactId: 'design-thread-1', path: hostPath });
+      const service = new DesignService(api, fileFs);
+
+      const prepared = await service.prepare('thread-1', 'Billing');
+
+      expect(api.artifacts.allocateStorage).toHaveBeenCalledWith('thread-1', 'design-thread-1', { location: 'visible', folderName: 'billing', owner: { pluginId: 'threads-design' } });
+      expect(prepared.artifact.root).toBe(hostPath);
+    });
+
+    it('still works when an older host ignores the options and returns the hidden path', async () => {
+      const { api } = apiHarness();
+      api.artifacts.allocateStorage.mockResolvedValueOnce({ success: true, status: 'allocated', artifactId: 'design-thread-1', path: '/vault/.geode/artifacts/design-thread-1' });
+      const service = new DesignService(api, fileFs);
+
+      const prepared = await service.prepare('thread-1', 'Billing');
+
+      expect(prepared.created).toBe(true);
+      expect(prepared.artifact.root).toBe('/vault/.geode/artifacts/design-thread-1');
+    });
+
+    it('removes the host-returned storage when preparation fails', async () => {
+      const { api } = apiHarness();
+      api.artifacts.allocateStorage.mockResolvedValueOnce({ success: true, status: 'allocated', artifactId: 'design-thread-1', path: '/vault/Artifacts/design/billing' });
+      api.artifacts.invokeAction.mockResolvedValueOnce({ status: 'error', message: 'preview failed' });
+      const rm = vi.fn(async () => {});
+      const service = new DesignService(api, { ...fileFs, rm } as any);
+
+      await expect(service.prepare('thread-1', 'Billing')).rejects.toThrow('preview failed');
+
+      expect(rm).toHaveBeenCalledWith('/vault/Artifacts/design/billing', { recursive: true, force: true });
+    });
   });
 
   it('keeps committed work when kickoff send fails', async () => {
