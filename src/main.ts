@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { migrateHiddenDesigns } from './designMigration';
 import { captureHostTheme } from './hostTheme';
+import { loadDesignGuidance } from './designGuidance';
 
 const REQUIRED_CAPABILITIES = [
   'threads.beginProvisional', 'threads.send', 'threads.open', 'threads.permissions',
@@ -68,7 +69,10 @@ export default class ThreadsDesignPlugin extends Plugin {
       mkdir: (target, options) => fs.mkdir(target, options),
       writeFile: (target, data, options) => fs.writeFile(target, data, options),
       rm: (target, options) => fs.rm(target, options),
-    }, (message, isError) => new Notice(isError ? message : `Design: ${message}`), () => captureHostTheme());
+    }, (message, isError) => new Notice(isError ? message : `Design: ${message}`), () => captureHostTheme(), cwd => loadDesignGuidance(cwd, {
+      readFile: target => fs.readFile(target, 'utf8'),
+      exists: target => fs.access(target).then(() => true, () => false),
+    }));
     const registrations = [
       api.extensions.registerArtifactProvider(DESIGN_PROVIDER_OWNER, createDesignArtifactContribution()),
       api.extensions.registerAgentTool(DESIGN_PROVIDER_OWNER, createDesignAgentTool(service)),

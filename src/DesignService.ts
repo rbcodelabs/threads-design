@@ -14,6 +14,7 @@ import {
   DESIGN_PROVIDER_ID,
   DESIGN_PROVIDER_OWNER,
 } from './designArtifactProvider';
+import type { DesignGuidance, DesignGuidanceReader } from './designGuidance';
 import type { DesignMode } from './designModes';
 import { designFolderName } from './designStorage';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
@@ -39,7 +40,23 @@ export class DesignService {
     private readonly fileFs: DesignArtifactFs,
     private readonly report: (message: string, isError?: boolean) => void = () => {},
     private readonly provideTheme: () => HostThemeSnapshot = () => normalizeHostTheme('dark', {}),
+    private readonly readGuidance?: DesignGuidanceReader,
   ) {}
+
+  /** Best-effort DESIGN.md lookup; never throws. */
+  private async guidanceFor(threadId: string): Promise<DesignGuidance | undefined> {
+    if (!this.readGuidance) return undefined;
+    try {
+      const cwd = (await this.api.threads.get(threadId))?.cwd;
+      if (!cwd) return undefined;
+      const guidance = await this.readGuidance(cwd);
+      if (!guidance) return undefined;
+      this.report(`Using DESIGN.md from ${guidance.path}`);
+      return guidance;
+    } catch {
+      return undefined;
+    }
+  }
 
   async state(threadId: string): Promise<{ hasArtifacts: boolean; existingTitle?: string } | null> {
     const thread = await this.api.threads.get(threadId);
@@ -98,7 +115,8 @@ export class DesignService {
       const preview = await this.api.artifacts.invokeAction(threadId, artifact.id, DESIGN_ACTION_PREVIEW);
       if (preview.status === 'error') throw new Error(preview.message);
       if (preview.status === 'warning') this.report(preview.message);
-      return { artifact, created, instructions: designKickoffMessage(artifact, brief, mode) };
+      const guidance = await this.guidanceFor(threadId);
+      return { artifact, created, instructions: designKickoffMessage(artifact, brief, mode, guidance) };
     } catch (error) {
       if (allocatedRoot) {
         try { await this.fileFs.rm?.(allocatedRoot, { recursive: true, force: true }); } catch { /* host rollback remains authoritative */ }

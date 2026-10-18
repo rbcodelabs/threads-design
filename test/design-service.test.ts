@@ -183,6 +183,46 @@ describe('DesignService', () => {
     });
   });
 
+  describe('DESIGN.md guidance', () => {
+    it('loads guidance from the thread cwd, applies it, and reports', async () => {
+      const { api } = apiHarness();
+      api.threads.get = vi.fn(async () => ({ id: 'thread-1', cwd: '/repo/app' }));
+      const reader = vi.fn(async () => ({ path: '/repo/DESIGN.md', content: 'Brand: teal.', truncated: false }));
+      const report = vi.fn();
+      const service = new DesignService(api, fileFs, report, undefined, reader);
+
+      const prepared = await service.prepare('thread-1', 'Plan picker');
+
+      expect(reader).toHaveBeenCalledWith('/repo/app');
+      expect(prepared.instructions).toContain('Brand: teal.');
+      expect(prepared.instructions).not.toContain('distinctive visual direction');
+      expect(report).toHaveBeenCalledWith('Using DESIGN.md from /repo/DESIGN.md');
+    });
+
+    it.each([['no cwd', { id: 'thread-1' }], ['a null thread', null]])('falls back to the lookup bullet when threads.get returns %s', async (_name, thread) => {
+      const { api } = apiHarness();
+      api.threads.get = vi.fn(async () => thread);
+      const reader = vi.fn(async () => null);
+      const service = new DesignService(api, fileFs, undefined, undefined, reader);
+
+      const prepared = await service.prepare('thread-1', 'Plan picker');
+
+      expect(reader).not.toHaveBeenCalled();
+      expect(prepared.instructions).toContain('distinctive visual direction');
+      expect(prepared.instructions).toContain('docs/DESIGN.md');
+    });
+
+    it('never breaks prepare when guidance lookup throws', async () => {
+      const { api } = apiHarness();
+      api.threads.get = vi.fn(async () => { throw new Error('host down'); });
+      const service = new DesignService(api, fileFs, undefined, undefined, async () => { throw new Error('read'); });
+      await expect(service.prepare('thread-1', 'Plan picker')).resolves.toMatchObject({ created: true });
+
+      api.threads.get = vi.fn(async () => ({ id: 'thread-2', cwd: '/x' }));
+      await expect(service.prepare('thread-2', 'Plan picker')).resolves.toBeDefined();
+    });
+  });
+
   it('keeps committed work when kickoff send fails', async () => {
     const { api, handle } = apiHarness();
     api.threads.send.mockRejectedValueOnce(new Error('session unavailable'));
