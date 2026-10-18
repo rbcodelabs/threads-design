@@ -3,6 +3,7 @@ import * as path from 'path';
 import { DESIGN_ARTIFACT_KIND, DESIGN_ARTIFACT_SCHEMA_VERSION, DESIGN_PROVIDER_ID } from './designArtifactProvider';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
 import { parseDesignModeArgs, type DesignMode } from './designModes';
+import type { DesignGuidance } from './designGuidance';
 
 export { DESIGN_ARTIFACT_SCHEMA_VERSION };
 
@@ -226,7 +227,16 @@ ${MODE_OVERRIDE}
 - Keep everything static: no network calls, no server, no remote fonts, and every other artifact rule below still applies.`,
 };
 
-export function designKickoffMessage(artifact: DesignArtifact, brief: string, mode?: DesignMode): string {
+const DESIGN_FILE_LOOKUP_BULLET = '- Before designing, check your working directory (and its parents up to the repo root) for DESIGN.md, .claude/DESIGN.md, or docs/DESIGN.md. If one exists, read it and treat it as authoritative project design guidance: stay within its colors, type, spacing, radii and component styles, and for variations differ only in layout, flow, hierarchy and interaction. An explicit brief that asks for a new look still wins.';
+
+export function designKickoffMessage(artifact: DesignArtifact, brief: string, mode?: DesignMode, guidance?: DesignGuidance): string {
+  const guidanceSection = guidance
+    ? `Project design guidance (from ${guidance.path} — authoritative; overrides the generic design intent below):\n${guidance.content.trim()}\n\n`
+    : '';
+  const directionBullet = guidance
+    ? '- Follow the project design guidance above. Do not introduce new colors, type, spacing, radii or component styles beyond it unless the brief explicitly asks to explore a new look. For variations, differ only in layout, flow, hierarchy and interaction, not visual styling.'
+    : '- Establish appropriate information architecture, realistic content, clear visual hierarchy, and a distinctive visual direction suited to the brief.';
+  const lookupBullet = guidance ? '' : `\n${DESIGN_FILE_LOOKUP_BULLET}`;
   const modeSection = mode ? `${MODE_INSTRUCTIONS[mode]}\n\n` : '';
   return `You are working in Agent Threads Design mode.
 
@@ -236,11 +246,11 @@ ${artifact.root}
 User brief:
 ${brief.trim()}
 
-Design intent:
+${guidanceSection}Design intent:
 - Treat the user brief as requirements and context, not literal page copy. Do not echo the brief as a headline or paste it into the interface.
 - Replace the preparation scaffold promptly; it is a temporary loading state, not a design direction.
-- Establish appropriate information architecture, realistic content, clear visual hierarchy, and a distinctive visual direction suited to the brief.
-- Review and refine both desktop and mobile layouts before finishing.
+${directionBullet}
+- Review and refine both desktop and mobile layouts before finishing.${lookupBullet}
 
 ${modeSection}Artifact rules:
 - Treat artifact.json as the host contract; do not change its schemaVersion, id, runtime, thread id, or permissions.

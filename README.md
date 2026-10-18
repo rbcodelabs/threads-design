@@ -48,6 +48,20 @@ This repository is private; downloading releases requires repository access.
 
 Existing design artifacts do not need to be moved. Without this plugin, Agent Threads v0.43.0 retains source access to legacy artifacts but no longer supplies `/design` or `EnterDesignMode` itself.
 
+## DESIGN.md
+
+To keep feature and UX designs faithful to an existing product, add a `DESIGN.md` to the project. Design looks for the nearest one starting at the thread's working directory and walking up to the repo root (the first directory containing `.git`). In each directory the order is `DESIGN.md`, then `.claude/DESIGN.md`, then `docs/DESIGN.md`; the nearest match wins. Content is capped at 12,000 characters and marked `[truncated]` beyond that. When found, it is injected into the design kickoff as authoritative guidance and the generic "distinctive visual direction" instruction is replaced. If the host does not expose the thread's working directory, the agent is told to look for these files itself.
+
+Good things to put in it:
+
+- A fidelity rule: match the existing UI; do not invent new colors, type, spacing, radii or component styles.
+- Design tokens (colors, type scale, spacing, radii, shadows).
+- Component conventions (buttons, forms, tables, navigation, empty and error states).
+- Pointers to source files and screenshots that show the canonical look.
+- Variations should differ only in layout, flow, hierarchy and interaction, not visual styling.
+
+An explicit brief that asks for a new look overrides the file.
+
 ## Development
 
 ```sh
