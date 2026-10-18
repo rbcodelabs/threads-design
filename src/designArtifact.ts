@@ -13,13 +13,14 @@ export interface DesignArtifactManifest {
   entry: 'index.html';
   runtime: 'static';
   createdByThreadId: string;
-  viewport: { preset: 'desktop'; width: 1440; height: 900 };
+  viewport: { preset: 'desktop' | 'fill'; width: 1440; height: 900 };
   permissions: { network: 'none'; clipboard: false };
 }
 
 export interface DesignArtifactFs {
   mkdir(target: string, options: { recursive: true }): Promise<unknown>;
   writeFile(target: string, data: string, options?: { flag: 'wx' }): Promise<unknown>;
+  readFile?(target: string): Promise<string>;
   rm?(target: string, options: { recursive: true; force: true }): Promise<unknown>;
 }
 
@@ -44,6 +45,7 @@ const defaultFs: DesignArtifactFs = {
   mkdir: (target, options) => fs.mkdir(target, options),
   writeFile: (target, data, options) => fs.writeFile(target, data, options),
   rm: (target, options) => fs.rm(target, options),
+  readFile: target => fs.readFile(target, 'utf8'),
 };
 
 export function artifactIdForThread(threadId: string): string {
@@ -122,6 +124,21 @@ async function writeIfMissing(fileFs: DesignArtifactFs, target: string, content:
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
   }
+}
+
+/**
+ * Variations mode produces a comparison board that must fill the preview pane;
+ * every other mode is a normal page that belongs in the responsive desktop
+ * frame. Geode reads this from artifact.json, so it is rewritten per mode.
+ */
+export async function applyModeViewport(root: string, mode: DesignMode, fileFs: DesignArtifactFs = defaultFs): Promise<void> {
+  if (!fileFs.readFile) return;
+  const manifestPath = path.join(root, 'artifact.json');
+  const manifest = JSON.parse(await fileFs.readFile(manifestPath)) as DesignArtifactManifest;
+  const preset = mode === 'variations' ? 'fill' : 'desktop';
+  if (manifest.viewport?.preset === preset) return;
+  manifest.viewport = { preset, width: 1440, height: 900 };
+  await fileFs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 export async function scaffoldDesignArtifact(

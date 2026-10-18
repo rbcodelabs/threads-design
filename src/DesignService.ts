@@ -1,5 +1,6 @@
 import type { AgentHarness, AgentThreadsApiV1, ThreadArtifactRef } from './contracts';
 import {
+  applyModeViewport,
   artifactIdForThread,
   designKickoffMessage,
   designTitle,
@@ -94,6 +95,7 @@ export class DesignService {
         created = true;
       }
 
+      if (mode) await applyModeViewport(artifact.root, mode, this.fileFs);
       await this.api.threads.open(threadId);
       const preview = await this.api.artifacts.invokeAction(threadId, artifact.id, DESIGN_ACTION_PREVIEW);
       if (preview.status === 'error') throw new Error(preview.message);
