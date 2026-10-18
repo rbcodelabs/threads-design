@@ -53,6 +53,7 @@ export default class ThreadsDesignPlugin extends Plugin {
     const service = new DesignService(api, {
       mkdir: (target, options) => fs.mkdir(target, options),
       writeFile: (target, data, options) => fs.writeFile(target, data, options),
+      readFile: target => fs.readFile(target, 'utf8'),
       rm: (target, options) => fs.rm(target, options),
     }, (message, isError) => new Notice(isError ? message : `Design: ${message}`), () => captureHostTheme());
     const registrations = [
