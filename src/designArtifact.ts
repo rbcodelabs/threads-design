@@ -128,7 +128,7 @@ async function writeIfMissing(fileFs: DesignArtifactFs, target: string, content:
 }
 
 /**
- * Variations mode produces a comparison board that must fill the preview pane;
+ * Variations and storyboard modes produce a board that must fill the preview pane;
  * every other mode is a normal page that belongs in the responsive desktop
  * frame. Geode reads this from artifact.json, so it is rewritten per mode.
  */
@@ -136,7 +136,7 @@ export async function applyModeViewport(root: string, mode: DesignMode, fileFs: 
   if (!fileFs.readFile) return;
   const manifestPath = path.join(root, 'artifact.json');
   const manifest = JSON.parse(await fileFs.readFile(manifestPath)) as DesignArtifactManifest;
-  const preset = mode === 'variations' ? 'fill' : 'desktop';
+  const preset = mode === 'variations' || mode === 'storyboard' ? 'fill' : 'desktop';
   if (manifest.viewport?.preset === preset) return;
   manifest.viewport = { preset, width: 1440, height: 900 };
   await fileFs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -225,6 +225,17 @@ ${MODE_OVERRIDE}
 - The overlay must never shift layout or reflow the underlying design. Use non-intrusive techniques such as absolutely or overlay-positioned labels, outlines, and pseudo-elements rather than adding real padding, margin, or borders that would push content.
 - The overlay must work across both the desktop and mobile layouts already in the design, updating its measurements and labels as the design responds to viewport width.
 - Keep everything static: no network calls, no server, no remote fonts, and every other artifact rule below still applies.`,
+  storyboard: `Mode: storyboard
+${MODE_OVERRIDE}
+- Decide from the brief whether this is a product flow storyboard (screens or steps a user moves through) or a video storyboard (shots in a timeline), and state which one you chose in the page header.
+- Keep every frame in a single storyboard.json at the artifact root. It is the single source of truth: index.html and app.js load it with a relative fetch and render it as a numbered frame grid. Do not duplicate frame content in the HTML.
+- Each frame has a number, a visual, a caption, and notes. The visual is an inline SVG or scoped HTML/CSS mock; no network, no remote images, no iframes.
+- Flow storyboards add a trigger or branch label between consecutive frames (for example "Tap Continue" or "Payment fails") and show branches as labeled connectors or sub-rows.
+- Video storyboards add per-frame duration, shot/camera (framing, angle, movement), and voiceover fields, and show the total runtime computed from the durations in the page header.
+- Provide in-page editing in app.js: reorder frames by drag and drop and with keyboard arrows (focus a frame, then use the arrow keys to move it), renumbering as they move, and edit captions inline. Edits live in the page only; the page cannot write to disk, and the clipboard is disabled by the artifact CSP and permissions, so do not offer a copy button. Instead provide a read-only markdown view in the page that reflects the current order and captions, and say in the page that edits are not saved.
+- Also write storyboard.md at the artifact root: a markdown shot list derived from storyboard.json (frame number, caption, notes, and the flow or video fields). Regenerate it whenever you change storyboard.json, including on re-runs.
+- If the artifact already contains a design, reuse its look and content for the frame visuals unless the brief says otherwise. Honor any DESIGN.md guidance, and every artifact rule below still applies.
+- The board replaces the content of index.html and must stay usable at narrow widths (the grid wraps to fewer columns).`,
 };
 
 const DESIGN_FILE_LOOKUP_BULLET = '- Before designing, check your working directory (and its parents up to the repo root) for DESIGN.md, .claude/DESIGN.md, or docs/DESIGN.md. If one exists, read it and treat it as authoritative project design guidance: stay within its colors, type, spacing, radii and component styles, and for variations differ only in layout, flow, hierarchy and interaction. An explicit brief that asks for a new look still wins.';

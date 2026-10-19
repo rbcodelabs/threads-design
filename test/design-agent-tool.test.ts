@@ -16,7 +16,7 @@ describe('EnterDesignMode agent tool', () => {
     const { tool } = fixture();
     const schema = tool.inputSchema as { properties: Record<string, { enum?: string[]; description?: string }>; required: string[] };
     expect(schema.required).toEqual(['brief']);
-    expect(schema.properties.mode.enum).toEqual(['wireframe', 'states', 'variations', 'pick', 'spec']);
+    expect(schema.properties.mode.enum).toEqual(['wireframe', 'states', 'variations', 'pick', 'spec', 'storyboard']);
     expect(schema.properties.mode.description).toMatch(/variations/);
     expect(schema.properties.mode.description).toMatch(/pick/);
     expect(schema.properties.mode.description).toMatch(/wireframe/);
@@ -40,7 +40,7 @@ describe('EnterDesignMode agent tool', () => {
     expect(service.prepare).toHaveBeenCalledWith('thread-1', 'Pricing page', { mode: undefined });
   });
 
-  it.each(['wireframe', 'states', 'variations'] as const)('passes mode %s through to prepare', async mode => {
+  it.each(['wireframe', 'states', 'variations', 'storyboard'] as const)('passes mode %s through to prepare', async mode => {
     const { tool, service, host } = fixture();
     await tool.invoke('thread-1', { brief: 'Pricing page', mode }, host);
     expect(service.prepare).toHaveBeenCalledWith('thread-1', 'Pricing page', { mode });

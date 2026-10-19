@@ -2,7 +2,7 @@
  * Prompt modes are per-turn instruction variants for the same design artifact.
  * They never change the artifact kind, manifest, or storage.
  */
-export const DESIGN_MODES = ['wireframe', 'states', 'variations', 'pick', 'spec'] as const;
+export const DESIGN_MODES = ['wireframe', 'states', 'variations', 'pick', 'spec', 'storyboard'] as const;
 
 export type DesignMode = typeof DESIGN_MODES[number];
 
@@ -42,7 +42,7 @@ export const PICK_DISPATCH_ERROR = 'There is nothing to pick from in a new threa
 export const SPEC_WITHOUT_DESIGN_ERROR = 'This thread has no design to annotate. Build a design first, then run /design spec: on it.';
 export const SPEC_DISPATCH_ERROR = 'There is nothing to annotate in a new thread. Build a design first, then run /design spec: in that thread.';
 
-/** Compact mode list for command descriptions, e.g. "wireframe, states, variations, pick, spec". */
+/** Compact mode list for command descriptions, e.g. "wireframe, states, variations, pick, spec, storyboard". */
 export const DESIGN_MODE_LIST = DESIGN_MODES.join(', ');
 
 /**
@@ -56,4 +56,5 @@ export const DESIGN_MODE_DESCRIPTIONS: Record<DesignMode, string> = {
   variations: '3 (up to 4) distinct directions A–D plus a comparison board.',
   pick: 'promote a variation; the brief must start with its letter, e.g. "B" or "B, but use A\'s navigation".',
   spec: 'add a toggleable redline/spec overlay to the existing design without changing it.',
+  storyboard: 'ordered frames with captions for a product flow or a video, with an in-page reorder and a markdown shot list.',
 };
