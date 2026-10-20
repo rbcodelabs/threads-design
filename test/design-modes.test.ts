@@ -3,7 +3,7 @@ import { DESIGN_MODES, isDesignMode, parseDesignModeArgs, pickLetter } from '../
 
 describe('design mode parsing', () => {
   it('lists the supported modes', () => {
-    expect(DESIGN_MODES).toEqual(['wireframe', 'states', 'variations', 'pick', 'spec']);
+    expect(DESIGN_MODES).toEqual(['wireframe', 'states', 'variations', 'pick', 'spec', 'storyboard']);
     expect(isDesignMode('states')).toBe(true);
     expect(isDesignMode('States')).toBe(false);
     expect(isDesignMode('foo')).toBe(false);
@@ -17,6 +17,8 @@ describe('design mode parsing', () => {
     ['  states :  the plan-picker card  ', 'states', 'the plan-picker card'],
     ['wireframe: line one\nline two', 'wireframe', 'line one\nline two'],
     ['Variations: a pricing page', 'variations', 'a pricing page'],
+    ['storyboard: onboarding flow', 'storyboard', 'onboarding flow'],
+    ['Storyboard:  a 30s launch video', 'storyboard', 'a 30s launch video'],
     ['pick: B, but use A\'s navigation', 'pick', 'B, but use A\'s navigation'],
     ['PICK:c', 'pick', 'c'],
     ['spec: the pricing page', 'spec', 'the pricing page'],

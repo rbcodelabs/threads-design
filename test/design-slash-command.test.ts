@@ -22,11 +22,11 @@ describe('Design slash command contribution', () => {
   it('describes both surfaces including modes', () => {
     const { command } = fixture();
     expect(command.name).toBe('design');
-    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec)');
-    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec)');
+    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec, storyboard)');
+    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec, storyboard)');
   });
 
-  it('offers all 5 mode keywords with their colons as thread argument completions', () => {
+  it('offers all 6 mode keywords with their colons as thread argument completions', () => {
     const { command } = fixture();
     expect(command.thread?.argCompletions).toEqual([
       { name: 'wireframe:', description: DESIGN_MODE_DESCRIPTIONS.wireframe },
@@ -34,6 +34,7 @@ describe('Design slash command contribution', () => {
       { name: 'variations:', description: DESIGN_MODE_DESCRIPTIONS.variations },
       { name: 'pick:', description: DESIGN_MODE_DESCRIPTIONS.pick },
       { name: 'spec:', description: DESIGN_MODE_DESCRIPTIONS.spec },
+      { name: 'storyboard:', description: DESIGN_MODE_DESCRIPTIONS.storyboard },
     ]);
   });
 
@@ -43,11 +44,12 @@ describe('Design slash command contribution', () => {
       { name: 'wireframe:', description: DESIGN_MODE_DESCRIPTIONS.wireframe },
       { name: 'states:', description: DESIGN_MODE_DESCRIPTIONS.states },
       { name: 'variations:', description: DESIGN_MODE_DESCRIPTIONS.variations },
+      { name: 'storyboard:', description: DESIGN_MODE_DESCRIPTIONS.storyboard },
     ]);
     const names = command.dispatch?.argCompletions?.map(c => c.name) ?? [];
     expect(names).not.toContain('pick:');
     expect(names).not.toContain('spec:');
-    expect(command.dispatch?.argCompletions).toHaveLength(3);
+    expect(command.dispatch?.argCompletions).toHaveLength(4);
   });
 
   it('requires a brief for an empty thread', async () => {
@@ -211,6 +213,22 @@ describe('Design slash command contribution', () => {
       const result = await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'wireframe:  ' }, host);
       expect(result).toEqual({ status: 'error', message: 'Include a brief after the mode — e.g. "/design wireframe: a billing settings page"' });
       expect(deps.dispatch).not.toHaveBeenCalled();
+    });
+
+    describe('storyboard', () => {
+      it('dispatches storyboard with a brief and rejects a bare one', async () => {
+        const { command, deps, context, host } = fixture();
+        expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'storyboard: onboarding flow' }, host)).toEqual({ status: 'ok' });
+        expect(deps.dispatch).toHaveBeenCalledWith('onboarding flow', undefined, 'storyboard');
+        expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: 'storyboard:' }, host)).toMatchObject({ status: 'error' });
+        expect(deps.dispatch).toHaveBeenCalledOnce();
+      });
+
+      it('creates a new artifact from a storyboard brief in a thread', async () => {
+        const { command, deps, context, host } = fixture();
+        await command.thread!.invoke({ ...context, args: 'storyboard: onboarding flow' }, host);
+        expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'onboarding flow', 'storyboard');
+      });
     });
 
     describe('variations', () => {

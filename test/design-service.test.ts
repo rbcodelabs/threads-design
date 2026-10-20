@@ -260,6 +260,7 @@ describe('DesignService viewport per mode', () => {
     return { preset: JSON.parse(written).viewport.preset, manifestWrites: fs.writeFile.mock.calls.filter((c: any[]) => c[0].endsWith('artifact.json')).length };
   }
   it('fills the pane for variations', async () => { expect((await run('variations')).preset).toBe('fill'); });
+  it('fills the pane for storyboard', async () => { expect((await run('storyboard')).preset).toBe('fill'); });
   it('restores desktop for other modes', async () => { expect((await run('pick', 'fill')).preset).toBe('desktop'); });
   it('does not rewrite the manifest without a mode', async () => { expect((await run(undefined)).manifestWrites).toBe(1); });
 });
