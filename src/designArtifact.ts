@@ -228,7 +228,7 @@ ${MODE_OVERRIDE}
   storyboard: `Mode: storyboard
 ${MODE_OVERRIDE}
 - Decide from the brief whether this is a product flow storyboard (screens or steps a user moves through) or a video storyboard (shots in a timeline), and state which one you chose in the page header.
-- Keep every frame in a single storyboard.json at the artifact root. It is the single source of truth: index.html and app.js load it with a relative fetch and render it as a numbered frame grid. Do not duplicate frame content in the HTML.
+- Keep every frame in a single storyboard.json at the artifact root. It is the single source of truth for editing. The artifact CSP is connect-src 'none', so fetch and XMLHttpRequest cannot read it. Also generate storyboard.js, a script that sets window.STORYBOARD to the same data, load it from index.html with a script tag before app.js, and have app.js render from window.STORYBOARD as a numbered frame grid. Regenerate storyboard.js from storyboard.json (for example with a one-line Node command) whenever the JSON changes. Do not duplicate frame content in the HTML.
 - Each frame has a number, a visual, a caption, and notes. The visual is an inline SVG or scoped HTML/CSS mock; no network, no remote images, no iframes.
 - Flow storyboards add a trigger or branch label between consecutive frames (for example "Tap Continue" or "Payment fails") and show branches as labeled connectors or sub-rows.
 - Video storyboards add per-frame duration, shot/camera (framing, angle, movement), and voiceover fields, and show the total runtime computed from the durations in the page header.
