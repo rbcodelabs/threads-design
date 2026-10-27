@@ -9,6 +9,7 @@ import * as path from 'node:path';
 import { migrateHiddenDesigns } from './designMigration';
 import { captureHostTheme } from './hostTheme';
 import { loadDesignGuidance } from './designGuidance';
+import { createNextjsRuntime, type NextjsRuntime } from './nextjsRuntime';
 
 const REQUIRED_CAPABILITIES = [
   'threads.beginProvisional', 'threads.send', 'threads.open', 'threads.permissions',
@@ -22,6 +23,7 @@ export default class ThreadsDesignPlugin extends Plugin {
   private registrations: Disposable[] = [];
   private startupNoticeTimer: ReturnType<typeof setTimeout> | null = null;
   private service: DesignService | null = null;
+  private nextjs: NextjsRuntime | null = null;
 
   async onload(): Promise<void> {
     const workspace = this.app.workspace as unknown as {
@@ -65,6 +67,10 @@ export default class ThreadsDesignPlugin extends Plugin {
       return;
     }
 
+    // Next.js prototypes need a real vault directory for the shared dependency cache.
+    const basePath = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+    const nextjs = basePath ? createNextjsRuntime({ cacheDir: path.join(basePath, '.geode', 'cache', 'design-nextjs') }) : null;
+
     const service = new DesignService(api, {
       mkdir: (target, options) => fs.mkdir(target, options),
       writeFile: (target, data, options) => fs.writeFile(target, data, options),
@@ -73,26 +79,28 @@ export default class ThreadsDesignPlugin extends Plugin {
     }, (message, isError) => new Notice(isError ? message : `Design: ${message}`), () => captureHostTheme(), cwd => loadDesignGuidance(cwd, {
       readFile: target => fs.readFile(target, 'utf8'),
       exists: target => fs.access(target).then(() => true, () => false),
-    }));
+    }), nextjs?.toolchain);
     const registrations = [
-      api.extensions.registerArtifactProvider(DESIGN_PROVIDER_OWNER, createDesignArtifactContribution()),
+      api.extensions.registerArtifactProvider(DESIGN_PROVIDER_OWNER, createDesignArtifactContribution(nextjs?.provider)),
       api.extensions.registerAgentTool(DESIGN_PROVIDER_OWNER, createDesignAgentTool(service)),
       api.extensions.registerSlashCommand(DESIGN_PROVIDER_OWNER, createDesignSlashCommand({
         getState: threadId => service.state(threadId),
         isDesktopFilesystem: () => true,
-        prepare: (threadId, brief, mode) => service.prepare(threadId, brief, { mode }),
+        prepare: (threadId, brief, mode, runtime) => service.prepare(threadId, brief, { mode, runtime }),
         send: async (threadId, prompt) => { await api.threads.send(threadId, { prompt, ownerPluginId: DESIGN_PROVIDER_OWNER.pluginId, idempotencyKey: crypto.randomUUID() }); },
-        dispatch: (brief, harness, mode) => service.dispatch(brief, harness, mode),
+        dispatch: (brief, harness, mode, runtime) => service.dispatch(brief, harness, mode, runtime),
       })),
     ];
     const refused = registrations.find(registration => !registration.success);
     if (refused) {
       registrations.forEach(registration => registration.dispose());
+      nextjs?.dispose();
       await service.dispose();
       new Notice(refused.message ?? 'Agent Threads refused the Design contribution.');
       return;
     }
     this.service = service;
+    this.nextjs = nextjs;
     this.registrations = registrations;
     void this.migrateLegacyDesigns(api);
   }
@@ -123,6 +131,8 @@ export default class ThreadsDesignPlugin extends Plugin {
     registrations.reverse().forEach(registration => registration.dispose());
     const service = this.service;
     this.service = null;
+    this.nextjs?.dispose();
+    this.nextjs = null;
     if (service) await service.dispose();
   }
 }

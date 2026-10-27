@@ -3,14 +3,17 @@ import {
   applyModeViewport,
   artifactIdForThread,
   designKickoffMessage,
+  designRuntimeOf,
   designTitle,
+  NEXTJS_UNSUPPORTED_MODES,
   scaffoldDesignArtifact,
   type DesignArtifact,
   type DesignArtifactFs,
+  type DesignRuntime,
 } from './designArtifact';
 import {
   DESIGN_ACTION_PREVIEW,
-  DESIGN_ARTIFACT_KIND,
+  DESIGN_ARTIFACT_KINDS,
   DESIGN_ARTIFACT_SCHEMA_VERSION,
   DESIGN_PROVIDER_ID,
   DESIGN_PROVIDER_OWNER,
@@ -20,9 +23,16 @@ import type { DesignMode } from './designModes';
 import { designFolderName } from './designStorage';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
 
+/** Installs/links the shared Next.js dependencies into a freshly scaffolded artifact. */
+export interface NextjsDependencies { ensureDependencies(root: string): Promise<void> }
+
+const isDesignRef = (ref: ThreadArtifactRef): boolean => (DESIGN_ARTIFACT_KINDS as readonly string[]).includes(ref.kind);
+
 export interface PrepareDesignOptions {
   mode?: DesignMode;
   checkPermissions?: boolean;
+  /** Runtime for a new artifact; for an existing one it must match or be omitted. */
+  runtime?: DesignRuntime;
 }
 
 export interface PreparedDesign {
@@ -42,6 +52,8 @@ export class DesignService {
     private readonly report: (message: string, isError?: boolean) => void = () => {},
     private readonly provideTheme: () => HostThemeSnapshot = () => normalizeHostTheme('dark', {}),
     private readonly readGuidance?: DesignGuidanceReader,
+    /** Absent when the Next.js runtime is unavailable (for example no resolvable cache directory). */
+    private readonly nextjs?: NextjsDependencies,
   ) {}
 
   /** Best-effort DESIGN.md lookup; never throws. */
@@ -62,11 +74,11 @@ export class DesignService {
   async state(threadId: string): Promise<{ hasArtifacts: boolean; existingTitle?: string } | null> {
     const thread = await this.api.threads.get(threadId);
     if (!thread) return null;
-    const ref = (await this.api.artifacts.list(threadId)).find(item => item.kind === DESIGN_ARTIFACT_KIND);
+    const ref = (await this.api.artifacts.list(threadId)).find(isDesignRef);
     return { hasArtifacts: !!ref, existingTitle: ref?.title };
   }
 
-  async prepare(threadId: string, brief: string, { mode, checkPermissions = true }: PrepareDesignOptions = {}): Promise<PreparedDesign> {
+  async prepare(threadId: string, brief: string, { mode, checkPermissions = true, runtime }: PrepareDesignOptions = {}): Promise<PreparedDesign> {
     if (checkPermissions) {
       const permissions = await this.api.threads.permissions(threadId);
       if (!permissions) throw new Error('Calling thread is unavailable.');
@@ -76,7 +88,19 @@ export class DesignService {
       }
     }
 
-    const existing = (await this.api.artifacts.list(threadId)).find(ref => ref.kind === DESIGN_ARTIFACT_KIND);
+    const existing = (await this.api.artifacts.list(threadId)).find(isDesignRef);
+    const existingRuntime = existing ? designRuntimeOf(existing.data as DesignArtifact) : undefined;
+    if (existing && runtime && existingRuntime !== runtime) {
+      // One design artifact per thread; silently switching runtime would orphan the user's work.
+      throw new Error(`This thread already has a ${existingRuntime} design artifact; its runtime cannot be changed to ${runtime}. Start a new thread for a ${runtime} design.`);
+    }
+    const effectiveRuntime = existingRuntime ?? runtime ?? 'static';
+    if (mode && effectiveRuntime === 'nextjs' && NEXTJS_UNSUPPORTED_MODES.includes(mode)) {
+      throw new Error(`The ${mode} mode is only available for static designs, not Next.js prototypes.`);
+    }
+    if (!existing && effectiveRuntime === 'nextjs' && !this.nextjs) {
+      throw new Error('Next.js design prototypes are unavailable: no dependency cache is configured for this vault.');
+    }
     let artifact: DesignArtifact;
     let created = false;
     let allocatedRoot: string | undefined;
@@ -97,10 +121,11 @@ export class DesignService {
         });
         if (!allocation.success) throw new Error(allocation.message);
         allocatedRoot = allocation.path;
-        artifact = await scaffoldDesignArtifact(threadId, allocation.path, brief, Date.now(), this.fileFs, this.provideTheme());
+        artifact = await scaffoldDesignArtifact(threadId, allocation.path, brief, Date.now(), this.fileFs, this.provideTheme(), effectiveRuntime);
+        if (effectiveRuntime === 'nextjs') await this.nextjs!.ensureDependencies(allocation.path);
         const ref: ThreadArtifactRef = {
           providerId: DESIGN_PROVIDER_ID,
-          kind: DESIGN_ARTIFACT_KIND,
+          kind: artifact.kind,
           schemaVersion: DESIGN_ARTIFACT_SCHEMA_VERSION,
           id: artifact.id,
           title: artifact.title,
@@ -112,7 +137,7 @@ export class DesignService {
         created = true;
       }
 
-      if (mode) await applyModeViewport(artifact.root, mode, this.fileFs);
+      if (mode && effectiveRuntime === 'static') await applyModeViewport(artifact.root, mode, this.fileFs);
       await this.api.threads.open(threadId);
       const preview = await this.api.artifacts.invokeAction(threadId, artifact.id, DESIGN_ACTION_PREVIEW);
       if (preview.status === 'error') throw new Error(preview.message);
@@ -127,7 +152,7 @@ export class DesignService {
     }
   }
 
-  async dispatch(brief: string, harness?: AgentHarness, mode?: DesignMode): Promise<string> {
+  async dispatch(brief: string, harness?: AgentHarness, mode?: DesignMode, runtime?: DesignRuntime): Promise<string> {
     const handle = await this.api.threads.beginProvisional(DESIGN_PROVIDER_OWNER, {
       title: designTitle(brief),
       agentHarness: harness,
@@ -135,7 +160,7 @@ export class DesignService {
     });
     this.pending.add(handle);
     try {
-      const prepared = await this.prepare(handle.threadId, brief, { mode, checkPermissions: false });
+      const prepared = await this.prepare(handle.threadId, brief, { mode, checkPermissions: false, runtime });
       await handle.commit();
       this.pending.delete(handle);
       try {

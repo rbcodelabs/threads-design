@@ -13,13 +13,39 @@ import {
   pickLetter,
   type DesignMode,
 } from './designModes';
+import { isDesignRuntime, type DesignRuntime } from './designArtifact';
 
 export interface DesignSlashCommandDependencies {
   getState(threadId: string): Promise<{ hasArtifacts: boolean; existingTitle?: string } | null> | { hasArtifacts: boolean; existingTitle?: string } | null;
   isDesktopFilesystem(): boolean;
-  prepare(threadId: string, brief: string, mode?: DesignMode): Promise<{ artifact: { title: string }; instructions: string }>;
+  prepare(threadId: string, brief: string, mode?: DesignMode, runtime?: DesignRuntime): Promise<{ artifact: { title: string }; instructions: string }>;
   send(threadId: string, prompt: string): Promise<void>;
-  dispatch(brief: string, harness?: 'claude' | 'codex', mode?: DesignMode): Promise<string>;
+  dispatch(brief: string, harness?: 'claude' | 'codex', mode?: DesignMode, runtime?: DesignRuntime): Promise<string>;
+}
+
+export type ParsedDesignArgs = { runtime?: DesignRuntime; mode?: DesignMode; brief: string } | { error: string };
+
+/**
+ * Leading flags choose the runtime: `--nextjs`, `--static`, `--runtime nextjs`, `--runtime=static`.
+ * Flags are only recognised before the mode/brief, so briefs may freely mention them later.
+ * The remainder is parsed for a `<mode>:` prefix, so `--nextjs wireframe: a dashboard` composes.
+ */
+export function parseDesignArgs(args: string): ParsedDesignArgs {
+  let rest = args.trim();
+  let runtime: DesignRuntime | undefined;
+  for (;;) {
+    const flag = /^--(nextjs|static)(?=\s|$)\s*/.exec(rest);
+    if (flag) { runtime = flag[1] as DesignRuntime; rest = rest.slice(flag[0].length); continue; }
+    const explicit = /^--runtime(?:=|\s+)(\S+)\s*/.exec(rest);
+    if (explicit) {
+      if (!isDesignRuntime(explicit[1])) return { error: `Unknown runtime "${explicit[1]}". Use --nextjs or --static.` };
+      runtime = explicit[1];
+      rest = rest.slice(explicit[0].length);
+      continue;
+    }
+    const { mode, brief } = parseDesignModeArgs(rest);
+    return { runtime, mode, brief };
+  }
 }
 
 const failure = (message: string): SlashCommandResult => ({ status: 'error', message });
@@ -27,8 +53,12 @@ const cancelled = (): SlashCommandResult => failure('Design command was cancelle
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const MODE_EXAMPLE = '/design wireframe: a billing settings page';
 // Only forward a mode when one was requested so default calls keep their exact shape.
-const modeArgs = (mode: DesignMode | undefined): [] | [DesignMode] => mode ? [mode] : [];
-const MODE_USAGE = `/design <brief> or /design <mode>: <brief> (${DESIGN_MODE_LIST})`;
+// Trailing args are only forwarded when set, so default calls keep their exact shape.
+const modeArgs = (mode: DesignMode | undefined, runtime?: DesignRuntime): [mode?: DesignMode, runtime?: DesignRuntime] => {
+  if (runtime) return [mode, runtime];
+  return mode ? [mode] : [];
+};
+const MODE_USAGE = `/design [--nextjs] <brief> or /design [--nextjs] <mode>: <brief> (${DESIGN_MODE_LIST})`;
 // pick and spec always error on dispatch — there's nothing to pick/annotate in a brand-new thread —
 // so they're excluded from what dispatch offers as autocomplete.
 const DISPATCH_MODES: readonly DesignMode[] = DESIGN_MODES.filter(mode => mode !== 'pick' && mode !== 'spec');
@@ -40,14 +70,16 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
   return {
     name: 'design',
     thread: {
-      description: `Create or revise a live static UI artifact: ${MODE_USAGE}`,
+      description: `Create or revise a live UI artifact (static HTML by default, --nextjs for a full app prototype): ${MODE_USAGE}`,
       argCompletions: modeCompletions(DESIGN_MODES),
       invoke: async (context, host) => {
         if (host.signal.aborted) return cancelled();
         const threadId = context.threadId;
         const state = threadId ? await deps.getState(threadId) : null;
         if (!threadId || !state) return { status: 'ok' };
-        const { mode, brief } = parseDesignModeArgs(context.args);
+        const parsed = parseDesignArgs(context.args);
+        if ('error' in parsed) return failure(parsed.error);
+        const { mode, brief, runtime } = parsed;
         if (mode === 'pick') {
           // Unlike other modes, pick needs a letter and existing variations; fail before preparing.
           if (!brief) return failure(PICK_EMPTY_ERROR);
@@ -67,7 +99,7 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
         }
         let prepared: Awaited<ReturnType<DesignSlashCommandDependencies['prepare']>>;
         try {
-          prepared = await deps.prepare(threadId, brief || state.existingTitle || 'Design artifact', ...modeArgs(mode));
+          prepared = await deps.prepare(threadId, brief || state.existingTitle || 'Design artifact', ...modeArgs(mode, runtime));
         } catch (error) {
           return failure(`Could not prepare the design artifact: ${errorMessage(error)}`);
         }
@@ -91,11 +123,13 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
       },
     },
     dispatch: {
-      description: `Dispatch a thread with a live static UI artifact: ${MODE_USAGE}`,
+      description: `Dispatch a thread with a live UI artifact (static HTML by default, --nextjs for a full app prototype): ${MODE_USAGE}`,
       argCompletions: modeCompletions(DISPATCH_MODES),
       invoke: async (context, host) => {
         if (host.signal.aborted) return cancelled();
-        const { mode, brief } = parseDesignModeArgs(context.args);
+        const parsed = parseDesignArgs(context.args);
+        if ('error' in parsed) return failure(parsed.error);
+        const { mode, brief, runtime } = parsed;
         if (mode === 'pick') return failure(brief ? PICK_DISPATCH_ERROR : PICK_EMPTY_ERROR);
         if (mode === 'spec') return failure(SPEC_DISPATCH_ERROR);
         if (mode && !brief) return failure(`Include a brief after the mode — e.g. "${MODE_EXAMPLE}"`);
@@ -104,7 +138,7 @@ export function createDesignSlashCommand(deps: DesignSlashCommandDependencies): 
           return failure('Design dispatch does not support attachments yet. Remove them and try again.');
         }
         try {
-          await deps.dispatch(brief, context.agentHarness, ...modeArgs(mode));
+          await deps.dispatch(brief, context.agentHarness, ...modeArgs(mode, runtime));
           return host.signal.aborted ? cancelled() : { status: 'ok' };
         } catch (error) {
           return failure(`Could not create design artifact: ${errorMessage(error)}`);

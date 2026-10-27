@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDesignSlashCommand, type DesignSlashCommandDependencies } from '../src/designSlashCommand';
+import { createDesignSlashCommand, parseDesignArgs, type DesignSlashCommandDependencies } from '../src/designSlashCommand';
 import type { SlashCommandContext, SlashCommandHost } from '../src/contracts';
 import { DESIGN_MODE_DESCRIPTIONS } from '../src/designModes';
 
@@ -22,8 +22,8 @@ describe('Design slash command contribution', () => {
   it('describes both surfaces including modes', () => {
     const { command } = fixture();
     expect(command.name).toBe('design');
-    expect(command.thread?.description).toBe('Create or revise a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec, storyboard)');
-    expect(command.dispatch?.description).toBe('Dispatch a thread with a live static UI artifact: /design <brief> or /design <mode>: <brief> (wireframe, states, variations, pick, spec, storyboard)');
+    expect(command.thread?.description).toBe('Create or revise a live UI artifact (static HTML by default, --nextjs for a full app prototype): /design [--nextjs] <brief> or /design [--nextjs] <mode>: <brief> (wireframe, states, variations, pick, spec, storyboard)');
+    expect(command.dispatch?.description).toBe('Dispatch a thread with a live UI artifact (static HTML by default, --nextjs for a full app prototype): /design [--nextjs] <brief> or /design [--nextjs] <mode>: <brief> (wireframe, states, variations, pick, spec, storyboard)');
   });
 
   it('offers all 6 mode keywords with their colons as thread argument completions', () => {
@@ -358,5 +358,69 @@ describe('Design slash command contribution', () => {
         expect(deps.dispatch).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+describe('runtime flag', () => {
+  it.each([
+    ['pricing page', undefined, 'pricing page'],
+    ['--nextjs pricing page', 'nextjs', 'pricing page'],
+    ['--static a landing page', 'static', 'a landing page'],
+    ['--runtime nextjs a CRM', 'nextjs', 'a CRM'],
+    ['--runtime=static a CRM', 'static', 'a CRM'],
+    ['--static --nextjs last wins', 'nextjs', 'last wins'],
+    ['--nextjs', 'nextjs', ''],
+    ['build a page with --nextjs inside', undefined, 'build a page with --nextjs inside'],
+    ['--nextjsfoo bar', undefined, '--nextjsfoo bar'],
+  ])('parses %j', (args, runtime, brief) => {
+    expect(parseDesignArgs(args)).toMatchObject({ runtime, brief });
+  });
+
+  it('composes the runtime flag with a mode prefix', () => {
+    expect(parseDesignArgs('--nextjs wireframe: a CRM')).toEqual({ runtime: 'nextjs', mode: 'wireframe', brief: 'a CRM' });
+    expect(parseDesignArgs('--static storyboard: onboarding')).toEqual({ runtime: 'static', mode: 'storyboard', brief: 'onboarding' });
+    expect(parseDesignArgs('wireframe: a CRM')).toEqual({ runtime: undefined, mode: 'wireframe', brief: 'a CRM' });
+  });
+
+  it('forwards both mode and runtime to prepare and dispatch', async () => {
+    const { command, deps, context, host } = fixture();
+    await command.thread!.invoke({ ...context, args: '--nextjs states: a table' }, host);
+    expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'a table', 'states', 'nextjs');
+    await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: '--nextjs wireframe: a CRM' }, host);
+    expect(deps.dispatch).toHaveBeenCalledWith('a CRM', undefined, 'wireframe', 'nextjs');
+  });
+
+  it('rejects an unknown runtime', () => {
+    expect(parseDesignArgs('--runtime=php x')).toEqual({ error: 'Unknown runtime "php". Use --nextjs or --static.' });
+  });
+
+  it('prepares a thread design with the chosen runtime', async () => {
+    const { command, deps, context, host } = fixture();
+    expect(await command.thread!.invoke({ ...context, args: '--nextjs a CRM' }, host)).toEqual({ status: 'ok' });
+    expect(deps.prepare).toHaveBeenCalledWith('original-thread', 'a CRM', undefined, 'nextjs');
+  });
+
+  it('requires a brief even when only the flag is given and no artifact exists', async () => {
+    const { command, deps, context, host } = fixture();
+    expect(await command.thread!.invoke({ ...context, args: '--nextjs' }, host)).toMatchObject({ status: 'error', message: expect.stringContaining('Include a brief') });
+    expect(deps.prepare).not.toHaveBeenCalled();
+  });
+
+  it('reports an unknown runtime as an error without preparing', async () => {
+    const { command, deps, context, host } = fixture();
+    expect(await command.thread!.invoke({ ...context, args: '--runtime=php x' }, host)).toMatchObject({ status: 'error', message: expect.stringContaining('Unknown runtime') });
+    expect(deps.prepare).not.toHaveBeenCalled();
+  });
+
+  it('dispatches with the chosen runtime and harness', async () => {
+    const { command, deps, context, host } = fixture();
+    expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: '--nextjs a CRM', agentHarness: 'codex' }, host)).toEqual({ status: 'ok' });
+    expect(deps.dispatch).toHaveBeenCalledWith('a CRM', 'codex', undefined, 'nextjs');
+  });
+
+  it('requires a dispatch brief after stripping flags', async () => {
+    const { command, deps, context, host } = fixture();
+    expect(await command.dispatch!.invoke({ ...context, surface: 'dispatch', args: '--nextjs' }, host)).toMatchObject({ status: 'error' });
+    expect(deps.dispatch).not.toHaveBeenCalled();
   });
 });

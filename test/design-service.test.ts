@@ -245,6 +245,100 @@ describe('DesignService', () => {
     await expect(service.prepare('thread-1', 'Settings')).rejects.toThrow(expected);
     expect(api.artifacts.allocateStorage).not.toHaveBeenCalled();
   });
+
+  describe('nextjs runtime', () => {
+    const toolchain = () => ({ ensureDependencies: vi.fn(async () => {}) });
+
+    it('scaffolds, links dependencies, attaches a design-app ref, and previews', async () => {
+      const { api } = apiHarness();
+      const deps = toolchain();
+      const service = new DesignService(api, fileFs, undefined, undefined, undefined, deps);
+      const prepared = await service.prepare('thread-1', 'CRM app', { runtime: 'nextjs' });
+      expect(deps.ensureDependencies).toHaveBeenCalledWith('/vault/design-thread-1');
+      expect(prepared.artifact).toMatchObject({ kind: 'design-app', runtime: 'nextjs' });
+      expect(prepared.instructions).toContain('Next.js');
+      expect(api.artifacts.attach).toHaveBeenCalledWith(expect.anything(), 'thread-1', expect.objectContaining({ kind: 'design-app', schemaVersion: 2 }));
+      expect(api.artifacts.invokeAction).toHaveBeenCalledWith('thread-1', 'design-thread-1', 'preview');
+    });
+
+    it('keeps static as the default and never touches the toolchain', async () => {
+      const { api } = apiHarness();
+      const deps = toolchain();
+      const prepared = await new DesignService(api, fileFs, undefined, undefined, undefined, deps).prepare('thread-1', 'Page');
+      expect(prepared.artifact.kind).toBe('design-static');
+      expect(deps.ensureDependencies).not.toHaveBeenCalled();
+    });
+
+    it('rolls back allocated storage when dependency setup fails, and never attaches', async () => {
+      const { api } = apiHarness();
+      const deps = { ensureDependencies: vi.fn(async () => { throw new Error('npm install exited with code 1'); }) };
+      const rm = vi.fn(async () => {});
+      const service = new DesignService(api, { ...fileFs, rm }, undefined, undefined, undefined, deps);
+      await expect(service.prepare('thread-1', 'CRM', { runtime: 'nextjs' })).rejects.toThrow('npm install exited with code 1');
+      expect(rm).toHaveBeenCalledWith('/vault/design-thread-1', { recursive: true, force: true });
+      expect(api.artifacts.attach).not.toHaveBeenCalled();
+    });
+
+    it('rolls the provisional thread back on dispatch when nextjs setup fails', async () => {
+      const { api, handle } = apiHarness();
+      const deps = { ensureDependencies: vi.fn(async () => { throw new Error('no npm'); }) };
+      const service = new DesignService(api, fileFs, undefined, undefined, undefined, deps);
+      await expect(service.dispatch('CRM', 'claude', undefined, 'nextjs')).rejects.toThrow('no npm');
+      expect(handle.rollback).toHaveBeenCalledOnce();
+      expect(api.threads.send).not.toHaveBeenCalled();
+    });
+
+    it('fails before allocating storage when no toolchain is configured', async () => {
+      const { api } = apiHarness();
+      await expect(new DesignService(api, fileFs).prepare('thread-1', 'CRM', { runtime: 'nextjs' })).rejects.toThrow('unavailable');
+      expect(api.artifacts.allocateStorage).not.toHaveBeenCalled();
+    });
+
+    it('refuses to change the runtime of an existing artifact', async () => {
+      const { api, artifacts } = apiHarness();
+      artifacts.push({ id: 'design-thread-1', kind: 'design-static', data: { id: 'design-thread-1', kind: 'design-static', runtime: 'static' } });
+      const service = new DesignService(api, fileFs, undefined, undefined, undefined, toolchain());
+      await expect(service.prepare('thread-1', 'CRM', { runtime: 'nextjs' })).rejects.toThrow('runtime cannot be changed');
+      expect(api.artifacts.update).not.toHaveBeenCalled();
+    });
+
+    it('reopens a legacy schema-v1 artifact (no runtime field) without rewriting its version', async () => {
+      const { api, artifacts } = apiHarness();
+      const legacy = { id: 'design-thread-1', kind: 'design-static', schemaVersion: 1, root: '/old', title: 'Old' };
+      artifacts.push({ id: legacy.id, kind: 'design-static', schemaVersion: 1, data: legacy });
+      const service = new DesignService(api, fileFs);
+      const prepared = await service.prepare('thread-1', 'revise', { runtime: 'static' });
+      expect(prepared.created).toBe(false);
+      expect(api.artifacts.update).toHaveBeenCalledWith(expect.anything(), 'thread-1', legacy.id, { data: expect.objectContaining({ schemaVersion: 1, kind: 'design-static' }) });
+      expect(prepared.instructions).toContain('Inline JavaScript is blocked');
+    });
+
+    it('rejects modes that cannot run on nextjs and still allows wireframe/states', async () => {
+      const deps = toolchain();
+      for (const mode of ['variations', 'pick', 'spec', 'storyboard'] as const) {
+        const { api } = apiHarness();
+        await expect(new DesignService(api, fileFs, undefined, undefined, undefined, deps).prepare('thread-1', 'CRM', { mode, runtime: 'nextjs' })).rejects.toThrow('only available for static');
+        expect(api.artifacts.allocateStorage).not.toHaveBeenCalled();
+      }
+      const { api } = apiHarness();
+      const prepared = await new DesignService(api, fileFs, undefined, undefined, undefined, deps).prepare('thread-1', 'CRM', { mode: 'wireframe', runtime: 'nextjs' });
+      expect(prepared.instructions).toContain('Mode: wireframe');
+      expect(prepared.instructions).toContain('Next.js');
+    });
+
+    it('rejects a static-only mode against an existing nextjs artifact even without a runtime', async () => {
+      const { api, artifacts } = apiHarness();
+      artifacts.push({ id: 'design-thread-1', kind: 'design-app', data: { id: 'design-thread-1', kind: 'design-app', runtime: 'nextjs', root: '/r' } });
+      await expect(new DesignService(api, fileFs).prepare('thread-1', 'x', { mode: 'variations' })).rejects.toThrow('only available for static');
+    });
+
+    it('recognizes an existing design-app artifact in state()', async () => {
+      const { api, artifacts } = apiHarness();
+      api.threads.get = vi.fn(async () => ({ id: 'thread-1' }));
+      artifacts.push({ id: 'x', kind: 'design-app', title: 'My app', data: {} });
+      expect(await new DesignService(api, fileFs).state('thread-1')).toEqual({ hasArtifacts: true, existingTitle: 'My app' });
+    });
+  });
 });
 
 describe('DesignService viewport per mode', () => {

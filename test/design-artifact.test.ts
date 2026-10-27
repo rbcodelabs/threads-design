@@ -1,6 +1,9 @@
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { artifactIdForThread, buildDesignManifest, designKickoffMessage, designTitle, scaffoldDesignArtifact, type DesignArtifactFs } from '../src/designArtifact';
+import {
+  artifactIdForThread, buildDesignManifest, designKickoffMessage, designRuntimeOf, designTitle, kindForRuntime,
+  parseDesignManifest, scaffoldDesignArtifact, type DesignArtifact, type DesignArtifactFs,
+} from '../src/designArtifact';
 import type { HostThemeSnapshot } from '../src/hostTheme';
 
 describe('design artifact contract', () => {
@@ -8,9 +11,9 @@ describe('design artifact contract', () => {
     expect(artifactIdForThread('ABC:thread/unsafe')).toBe('design-abc-thread-unsafe');
   });
 
-  it('builds the exact static, networkless v1 manifest', () => {
+  it('builds the exact static, networkless v2 manifest', () => {
     expect(buildDesignManifest('thread-1', 'Checkout concept')).toEqual({
-      schemaVersion: 1, id: 'design-thread-1', title: 'Checkout concept', entry: 'index.html', runtime: 'static',
+      schemaVersion: 2, id: 'design-thread-1', title: 'Checkout concept', entry: 'index.html', runtime: 'static',
       createdByThreadId: 'thread-1', viewport: { preset: 'desktop', width: 1440, height: 900 },
       permissions: { network: 'none', clipboard: false },
     });
@@ -111,5 +114,117 @@ describe('design artifact contract', () => {
       const section = message.slice(message.indexOf(`Mode: ${mode}`), message.indexOf('Artifact rules:'));
       expect(message.replace(section, '')).toBe(base);
     });
+  });
+});
+
+const legacyV1 = {
+  schemaVersion: 1, id: 'design-old', title: 'Old', entry: 'index.html', runtime: 'static', createdByThreadId: 'old',
+  viewport: { preset: 'desktop', width: 1440, height: 900 }, permissions: { network: 'none', clipboard: false },
+};
+
+describe('manifest versions', () => {
+  it('still reads and validates schema v1 static manifests', () => {
+    expect(parseDesignManifest(legacyV1)).toEqual(legacyV1);
+  });
+
+  it('round-trips freshly built v2 manifests for both runtimes', () => {
+    for (const runtime of ['static', 'nextjs'] as const) {
+      const manifest = buildDesignManifest('t', 'brief', runtime);
+      expect(parseDesignManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(manifest);
+    }
+  });
+
+  it.each([
+    ['unknown schema version', { ...legacyV1, schemaVersion: 3 }, 'Unsupported design manifest schemaVersion'],
+    ['v1 with nextjs runtime', { ...legacyV1, runtime: 'nextjs', permissions: { network: 'loopback', clipboard: false } }, 'schemaVersion 1 only supports the static runtime'],
+    ['unknown runtime', { ...legacyV1, schemaVersion: 2, runtime: 'php' }, 'Unsupported design runtime'],
+    ['nextjs without loopback', { ...legacyV1, schemaVersion: 2, runtime: 'nextjs' }, 'must be network "loopback"'],
+    ['static with network', { ...legacyV1, permissions: { network: 'loopback', clipboard: false } }, 'must be network "none"'],
+    ['missing id', { ...legacyV1, id: '' }, 'missing "id"'],
+    ['non-object', 'nope', 'must be an object'],
+  ])('rejects %s', (_name, raw, message) => {
+    expect(() => parseDesignManifest(raw)).toThrow(message);
+  });
+});
+
+function memoryFs(existing: Record<string, string> = {}) {
+  const writes = new Map<string, string>();
+  const dirs: string[] = [];
+  const fileFs: DesignArtifactFs = {
+    mkdir: vi.fn(async (target: string) => { dirs.push(target); }),
+    writeFile: vi.fn(async (target: string, data: string) => {
+      if (target in existing) throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+      writes.set(target, data);
+    }),
+  };
+  return { fileFs, writes, dirs };
+}
+
+describe('manifest viewport', () => {
+  it('accepts the fill viewport preset written by board modes', () => {
+    expect(parseDesignManifest({ ...legacyV1, schemaVersion: 2, viewport: { preset: 'fill', width: 1440, height: 900 } }).viewport.preset).toBe('fill');
+  });
+});
+
+describe('nextjs scaffold', () => {
+  const root = '/vault/.geode/artifacts/design-thread-1';
+
+  it('writes the Next.js source files with static-export config and a design-agent note', async () => {
+    const { fileFs, writes, dirs } = memoryFs();
+    const artifact = await scaffoldDesignArtifact('thread-1', root, 'Checkout app', 5, fileFs, undefined, 'nextjs');
+    const rel = [...writes.keys()].map(target => path.relative(root, target)).sort();
+    expect(rel).toEqual([
+      '.gitignore', 'AGENTS.md', 'app/globals.css', 'app/layout.tsx', 'app/page.tsx', 'artifact.json', 'next.config.mjs',
+      'package.json', 'postcss.config.mjs', 'tsconfig.json',
+    ]);
+    expect(dirs).toEqual(expect.arrayContaining([root, path.join(root, 'app'), path.join(root, 'public')]));
+    expect(artifact).toMatchObject({ kind: 'design-app', runtime: 'nextjs', schemaVersion: 2, entryPath: path.join(root, 'app/page.tsx') });
+
+    const config = writes.get(path.join(root, 'next.config.mjs'))!;
+    expect(config).toContain("output: 'export'");
+    expect(config).toContain('trailingSlash: true');
+    expect(config).toContain('unoptimized: true');
+    expect(JSON.parse(writes.get(path.join(root, 'package.json'))!)).toMatchObject({
+      dependencies: { next: expect.any(String), react: expect.any(String) },
+      devDependencies: { tailwindcss: expect.any(String), '@tailwindcss/postcss': expect.any(String) },
+    });
+    expect(writes.get(path.join(root, 'app/globals.css'))).toContain('@import "tailwindcss"');
+    const note = writes.get(path.join(root, 'AGENTS.md'))!;
+    for (const forbidden of ['route handlers', 'middleware', "'use server'", 'generateStaticParams']) expect(note).toContain(forbidden);
+    expect(JSON.parse(writes.get(path.join(root, 'artifact.json'))!)).toMatchObject({ runtime: 'nextjs', permissions: { network: 'loopback' } });
+  });
+
+  it('keeps writeIfMissing semantics: existing files are never overwritten', async () => {
+    const existing = { [path.join(root, 'app/page.tsx')]: 'agent work', [path.join(root, 'artifact.json')]: '{}' };
+    const { fileFs, writes } = memoryFs(existing);
+    await scaffoldDesignArtifact('thread-1', root, 'x', 5, fileFs, undefined, 'nextjs');
+    expect(writes.has(path.join(root, 'app/page.tsx'))).toBe(false);
+    expect(writes.has(path.join(root, 'artifact.json'))).toBe(false);
+    expect(writes.has(path.join(root, 'app/layout.tsx'))).toBe(true);
+  });
+
+  it('propagates non-EEXIST write failures', async () => {
+    const fileFs: DesignArtifactFs = { mkdir: vi.fn(async () => {}), writeFile: vi.fn(async () => { throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); }) };
+    await expect(scaffoldDesignArtifact('t', root, 'x', 5, fileFs, undefined, 'nextjs')).rejects.toThrow('disk full');
+  });
+
+  it('gives nextjs artifacts runtime-specific kickoff instructions', () => {
+    const artifact = { id: 'design-t', kind: 'design-app', runtime: 'nextjs', root: '/artifact' } as DesignArtifact;
+    const message = designKickoffMessage(artifact, 'Build a CRM');
+    expect(message).toContain('Next.js');
+    expect(message).toContain('AGENTS.md');
+    expect(message).toContain('Server Actions');
+    expect(message).toContain('generateStaticParams');
+    expect(message).toContain('Do not install packages');
+    expect(message).not.toContain('Inline JavaScript is blocked');
+  });
+
+  it('composes a supported mode and project guidance into the nextjs kickoff', () => {
+    const artifact = { id: 'design-t', kind: 'design-app', runtime: 'nextjs', root: '/artifact' } as DesignArtifact;
+    const message = designKickoffMessage(artifact, 'A CRM', 'wireframe', { path: 'DESIGN.md', content: 'Use teal.', truncated: false });
+    expect(message).toContain('Mode: wireframe');
+    expect(message).toContain('app/page.tsx');
+    expect(message).toContain('Use teal.');
+    expect(message).toContain('Next.js');
   });
 });
