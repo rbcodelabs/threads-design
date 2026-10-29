@@ -1,21 +1,46 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { DESIGN_ARTIFACT_KIND, DESIGN_ARTIFACT_SCHEMA_VERSION, DESIGN_PROVIDER_ID } from './designArtifactProvider';
+import {
+  DESIGN_APP_ARTIFACT_KIND,
+  DESIGN_ARTIFACT_KIND,
+  DESIGN_ARTIFACT_SCHEMA_VERSION,
+  DESIGN_LEGACY_SCHEMA_VERSION,
+  DESIGN_PROVIDER_ID,
+} from './designArtifactProvider';
+import {
+  NEXTJS_AGENTS_NOTE,
+  NEXTJS_CONFIG,
+  NEXTJS_GITIGNORE,
+  NEXTJS_GLOBALS_CSS,
+  NEXTJS_LAYOUT,
+  NEXTJS_PAGE,
+  NEXTJS_POSTCSS,
+  NEXTJS_TSCONFIG,
+  nextjsPackageJson,
+} from './nextjsTemplate';
 import { normalizeHostTheme, type HostThemeSnapshot } from './hostTheme';
 import { parseDesignModeArgs, type DesignMode } from './designModes';
 import type { DesignGuidance } from './designGuidance';
 
 export { DESIGN_ARTIFACT_SCHEMA_VERSION };
 
+export type DesignRuntime = 'static' | 'nextjs';
+export const DESIGN_RUNTIMES: readonly DesignRuntime[] = ['static', 'nextjs'];
+
+export function isDesignRuntime(value: unknown): value is DesignRuntime {
+  return value === 'static' || value === 'nextjs';
+}
+
 export interface DesignArtifactManifest {
-  schemaVersion: typeof DESIGN_ARTIFACT_SCHEMA_VERSION;
+  /** 1 = legacy static-only; 2 = adds the nextjs runtime. */
+  schemaVersion: typeof DESIGN_ARTIFACT_SCHEMA_VERSION | typeof DESIGN_LEGACY_SCHEMA_VERSION;
   id: string;
   title: string;
-  entry: 'index.html';
-  runtime: 'static';
+  entry: string;
+  runtime: DesignRuntime;
   createdByThreadId: string;
   viewport: { preset: 'desktop' | 'fill'; width: 1440; height: 900 };
-  permissions: { network: 'none'; clipboard: false };
+  permissions: { network: 'none' | 'loopback'; clipboard: false };
 }
 
 export interface DesignArtifactFs {
@@ -29,10 +54,12 @@ export type DesignPreviewResult = { status: 'opened' } | { status: 'source-revea
 
 export interface DesignArtifact {
   id: string;
-  kind: typeof DESIGN_ARTIFACT_KIND;
+  kind: typeof DESIGN_ARTIFACT_KIND | typeof DESIGN_APP_ARTIFACT_KIND;
   title: string;
   providerId: typeof DESIGN_PROVIDER_ID;
-  schemaVersion: typeof DESIGN_ARTIFACT_SCHEMA_VERSION;
+  schemaVersion: typeof DESIGN_ARTIFACT_SCHEMA_VERSION | typeof DESIGN_LEGACY_SCHEMA_VERSION;
+  /** Absent on artifacts created before schema version 2; those are static. */
+  runtime?: DesignRuntime;
   storageRoot: string;
   root: string;
   manifestPath: string;
@@ -40,6 +67,17 @@ export interface DesignArtifact {
   createdAt: number;
   updatedAt: number;
   lastCapturePath?: string;
+  lastExportPath?: string;
+}
+
+/** Runtime of a stored artifact, tolerating legacy (schema v1) payloads that have no `runtime`. */
+export function designRuntimeOf(artifact: Pick<DesignArtifact, 'runtime' | 'kind'>): DesignRuntime {
+  if (artifact.runtime) return artifact.runtime;
+  return artifact.kind === DESIGN_APP_ARTIFACT_KIND ? 'nextjs' : 'static';
+}
+
+export function kindForRuntime(runtime: DesignRuntime): DesignArtifact['kind'] {
+  return runtime === 'nextjs' ? DESIGN_APP_ARTIFACT_KIND : DESIGN_ARTIFACT_KIND;
 }
 
 const defaultFs: DesignArtifactFs = {
@@ -60,17 +98,47 @@ export function designTitle(brief: string): string {
   return firstLine.length <= 120 ? firstLine : `${firstLine.slice(0, 117)}…`;
 }
 
-export function buildDesignManifest(threadId: string, brief: string): DesignArtifactManifest {
+export function buildDesignManifest(threadId: string, brief: string, runtime: DesignRuntime = 'static'): DesignArtifactManifest {
   return {
     schemaVersion: DESIGN_ARTIFACT_SCHEMA_VERSION,
     id: artifactIdForThread(threadId),
     title: designTitle(brief),
-    entry: 'index.html',
-    runtime: 'static',
+    entry: runtime === 'nextjs' ? 'app/page.tsx' : 'index.html',
+    runtime,
     createdByThreadId: threadId,
     viewport: { preset: 'desktop', width: 1440, height: 900 },
-    permissions: { network: 'none', clipboard: false },
+    // The Next.js dev server is reachable only on 127.0.0.1; static artifacts stay networkless.
+    permissions: { network: runtime === 'nextjs' ? 'loopback' : 'none', clipboard: false },
   };
+}
+
+/**
+ * Validates an `artifact.json` payload. Schema v1 (static, networkless) and v2
+ * (static or nextjs) are both accepted so artifacts created by earlier releases
+ * keep working; anything else is rejected with a specific reason.
+ */
+export function parseDesignManifest(raw: unknown): DesignArtifactManifest {
+  if (typeof raw !== 'object' || raw === null) throw new Error('Design manifest must be an object.');
+  const m = raw as Record<string, unknown>;
+  const version = m.schemaVersion;
+  if (version !== DESIGN_LEGACY_SCHEMA_VERSION && version !== DESIGN_ARTIFACT_SCHEMA_VERSION) {
+    throw new Error(`Unsupported design manifest schemaVersion: ${String(version)}`);
+  }
+  for (const key of ['id', 'title', 'entry', 'createdByThreadId'] as const) {
+    if (typeof m[key] !== 'string' || !(m[key] as string)) throw new Error(`Design manifest is missing "${key}".`);
+  }
+  if (!isDesignRuntime(m.runtime)) throw new Error(`Unsupported design runtime: ${String(m.runtime)}`);
+  if (version === DESIGN_LEGACY_SCHEMA_VERSION && m.runtime !== 'static') {
+    throw new Error('Design manifest schemaVersion 1 only supports the static runtime.');
+  }
+  const permissions = m.permissions as { network?: unknown; clipboard?: unknown } | undefined;
+  const expectedNetwork = m.runtime === 'nextjs' ? 'loopback' : 'none';
+  if (!permissions || permissions.network !== expectedNetwork || permissions.clipboard !== false) {
+    throw new Error(`Design manifest permissions must be network "${expectedNetwork}" and clipboard false for runtime "${m.runtime}".`);
+  }
+  const viewport = m.viewport as DesignArtifactManifest['viewport'] | undefined;
+  if (!viewport || (viewport.preset !== 'desktop' && viewport.preset !== 'fill')) throw new Error('Design manifest has an unsupported viewport.');
+  return m as unknown as DesignArtifactManifest;
 }
 
 function scaffoldHtml(): string {
@@ -142,6 +210,21 @@ export async function applyModeViewport(root: string, mode: DesignMode, fileFs: 
   await fileFs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
+/** Source files only; `node_modules` is linked from the shared template install by the toolchain. */
+async function scaffoldNextjsFiles(fileFs: DesignArtifactFs, root: string, artifactId: string): Promise<void> {
+  await fileFs.mkdir(path.join(root, 'app'), { recursive: true });
+  await fileFs.mkdir(path.join(root, 'public'), { recursive: true });
+  await writeIfMissing(fileFs, path.join(root, 'package.json'), nextjsPackageJson(artifactId));
+  await writeIfMissing(fileFs, path.join(root, 'next.config.mjs'), NEXTJS_CONFIG);
+  await writeIfMissing(fileFs, path.join(root, 'tsconfig.json'), NEXTJS_TSCONFIG);
+  await writeIfMissing(fileFs, path.join(root, 'postcss.config.mjs'), NEXTJS_POSTCSS);
+  await writeIfMissing(fileFs, path.join(root, '.gitignore'), NEXTJS_GITIGNORE);
+  await writeIfMissing(fileFs, path.join(root, 'AGENTS.md'), NEXTJS_AGENTS_NOTE);
+  await writeIfMissing(fileFs, path.join(root, 'app', 'globals.css'), NEXTJS_GLOBALS_CSS);
+  await writeIfMissing(fileFs, path.join(root, 'app', 'layout.tsx'), NEXTJS_LAYOUT);
+  await writeIfMissing(fileFs, path.join(root, 'app', 'page.tsx'), NEXTJS_PAGE);
+}
+
 export async function scaffoldDesignArtifact(
   threadId: string,
   root: string,
@@ -149,20 +232,26 @@ export async function scaffoldDesignArtifact(
   now = Date.now(),
   fileFs: DesignArtifactFs = defaultFs,
   theme: HostThemeSnapshot = normalizeHostTheme('dark', {}),
+  runtime: DesignRuntime = 'static',
 ): Promise<DesignArtifact> {
-  const manifest = buildDesignManifest(threadId, brief);
+  const manifest = buildDesignManifest(threadId, brief, runtime);
   await fileFs.mkdir(root, { recursive: true });
   await writeIfMissing(fileFs, path.join(root, 'artifact.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  await writeIfMissing(fileFs, path.join(root, 'index.html'), scaffoldHtml());
-  await writeIfMissing(fileFs, path.join(root, 'styles.css'), scaffoldCss(theme));
-  await writeIfMissing(fileFs, path.join(root, 'app.js'), SCAFFOLD_JS);
+  if (runtime === 'nextjs') {
+    await scaffoldNextjsFiles(fileFs, root, manifest.id);
+  } else {
+    await writeIfMissing(fileFs, path.join(root, 'index.html'), scaffoldHtml());
+    await writeIfMissing(fileFs, path.join(root, 'styles.css'), scaffoldCss(theme));
+    await writeIfMissing(fileFs, path.join(root, 'app.js'), SCAFFOLD_JS);
+  }
 
   const artifact: DesignArtifact = {
     id: manifest.id,
-    kind: DESIGN_ARTIFACT_KIND,
+    kind: kindForRuntime(runtime),
     title: manifest.title,
     providerId: DESIGN_PROVIDER_ID,
     schemaVersion: DESIGN_ARTIFACT_SCHEMA_VERSION,
+    runtime,
     // Host-visible so thread deletion can collect it; re-validated by the host
     // against its allowed artifact roots before it is ever stored or removed.
     storageRoot: root,
@@ -249,6 +338,7 @@ export function designKickoffMessage(artifact: DesignArtifact, brief: string, mo
     : '- Establish appropriate information architecture, realistic content, clear visual hierarchy, and a distinctive visual direction suited to the brief.';
   const lookupBullet = guidance ? '' : `\n${DESIGN_FILE_LOOKUP_BULLET}`;
   const modeSection = mode ? `${MODE_INSTRUCTIONS[mode]}\n\n` : '';
+  if (designRuntimeOf(artifact) === 'nextjs') return nextjsKickoffMessage(artifact, brief, mode, guidance);
   return `You are working in Agent Threads Design mode.
 
 Create or revise the static UI artifact at:
@@ -273,3 +363,42 @@ ${modeSection}Artifact rules:
 
 Start now. Edit the artifact files directly, verify the static result, and report what you changed.`;
 }
+
+function nextjsKickoffMessage(artifact: DesignArtifact, brief: string, mode: DesignMode | undefined, guidance: DesignGuidance | undefined): string {
+  const guidanceSection = guidance
+    ? `Project design guidance (from ${guidance.path} — authoritative; overrides the generic design intent below):\n${guidance.content.trim()}\n\n`
+    : '';
+  const directionBullet = guidance
+    ? '- Follow the project design guidance above; do not introduce new colors, type, spacing, radii or component styles beyond it unless the brief explicitly asks for a new look.'
+    : '- Establish clear information architecture, visual hierarchy, and a distinctive visual direction.';
+  const modeSection = mode ? `${MODE_INSTRUCTIONS[mode]}\n${NEXTJS_MODE_NOTE}\n\n` : '';
+  return `You are working in Agent Threads Design mode, building a Next.js app prototype.
+
+Create or revise the Next.js (App Router, TypeScript, Tailwind CSS v4) prototype at:
+${artifact.root}
+
+User brief:
+${brief.trim()}
+
+${guidanceSection}Design intent:
+- Treat the user brief as requirements and context, not literal page copy. Do not echo the brief as a headline.
+- Replace the preparation placeholder in app/page.tsx promptly; it is a temporary loading state.
+- Design a complete flow: multiple routes where the brief implies them, realistic mock data, believable states (empty, loading, error), and client-side interactivity.
+${directionBullet}
+- Review desktop and mobile layouts before finishing.
+
+${modeSection}Artifact rules (read AGENTS.md in the artifact folder first):
+- Treat artifact.json as the host contract; do not change its schemaVersion, id, runtime, thread id, or permissions.
+- Mock data and client state only. No API routes or route handlers, middleware, Server Actions ('use server'), cookies()/headers(), or runtime server fetches. Dynamic segments require generateStaticParams(). These break the static HTML export.
+- Do not install packages or edit package.json / next.config.mjs. Do not run npm install or start a server: dependencies are pre-linked and the live preview dev server is managed by Agent Threads, which hot-reloads your edits.
+- No remote fonts, remote images, or network calls. Keep assets under public/ or app/.
+- Preserve accessibility: semantic landmarks, keyboard operation, labels, focus states, and sufficient contrast.
+
+Start now. Edit the files directly, check the preview, and report what you changed. The user can export the result as static HTML from the artifact card.`;
+}
+
+/** Mode instructions are written for the static runtime; this maps their file names onto a Next.js app. */
+const NEXTJS_MODE_NOTE = 'Next.js runtime: wherever the mode instructions name index.html, styles.css or app.js, use the app/ equivalents (app/page.tsx, app/globals.css, client components); the viewport and artifact.json stay untouched.';
+
+/** Modes whose output depends on static multi-file snapshots, inline-script-free overlays or JSON mirrors. */
+export const NEXTJS_UNSUPPORTED_MODES: readonly DesignMode[] = ['variations', 'pick', 'spec', 'storyboard'];

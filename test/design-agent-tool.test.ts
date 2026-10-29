@@ -100,3 +100,40 @@ describe('EnterDesignMode agent tool', () => {
     expect(service.prepare).not.toHaveBeenCalled();
   });
 });
+
+describe('EnterDesignMode runtime', () => {
+  it('declares an optional runtime enum defaulting to static', () => {
+    const { tool } = fixture();
+    const schema = tool.inputSchema as { properties: Record<string, unknown>; required: string[] };
+    expect(schema.required).toEqual(['brief']);
+    expect(schema.properties.runtime).toMatchObject({ type: 'string', enum: ['static', 'nextjs'], default: 'static' });
+  });
+
+  it('tells the agent when to choose nextjs', () => {
+    const { tool } = fixture();
+    expect(tool.description).toMatch(/multi-page/);
+    expect(tool.description).toMatch(/complete app/);
+    expect(tool.description).toMatch(/"nextjs"/);
+  });
+
+  it('passes an explicit nextjs runtime alongside a mode', async () => {
+    const { tool, service, host } = fixture();
+    await tool.invoke('thread-1', { brief: 'CRM', runtime: 'nextjs', mode: 'wireframe' }, host);
+    expect(service.prepare).toHaveBeenCalledWith('thread-1', 'CRM', { mode: 'wireframe', runtime: 'nextjs' });
+  });
+
+  it.each(['php', 3, null])('rejects invalid runtime %j without preparing', async runtime => {
+    const { tool, service, host } = fixture();
+    const result = await tool.invoke('thread-1', { brief: 'CRM', runtime }, host);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Unsupported runtime');
+    expect(service.prepare).not.toHaveBeenCalled();
+  });
+
+  it('surfaces service errors as tool errors', async () => {
+    const { tool, service, host } = fixture();
+    service.prepare.mockRejectedValue(new Error('runtime cannot be changed'));
+    const result = await tool.invoke('thread-1', { brief: 'x', runtime: 'nextjs' }, host);
+    expect(result).toEqual({ content: [{ type: 'text', text: 'runtime cannot be changed' }], isError: true });
+  });
+});

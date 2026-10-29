@@ -1,6 +1,6 @@
 # Design for Agent Threads
 
-Desktop-only peer plugin that adds static UI design artifacts to Agent Threads.
+Desktop-only peer plugin that adds UI design artifacts to Agent Threads: simple static HTML pages, or full Next.js app prototypes that can be exported back to static HTML.
 
 ## Requirements
 
@@ -11,9 +11,10 @@ Interactive preview and screenshot capture require Geode's artifact runtime. In 
 
 Enable Agent Threads first, then enable **Design for Agent Threads**. The plugin registers:
 
-- `/design <brief>` in existing-thread and new-thread composers
-- the `EnterDesignMode` agent tool
-- presentation, preview, capture, and source-reveal actions for `design-static` artifacts
+- `/design [--nextjs] <brief>` in existing-thread and new-thread composers
+- the `EnterDesignMode` agent tool (`brief`, optional `mode`, optional `runtime`)
+- presentation, preview, capture, and source-reveal actions for `design-static` and `design-app` artifacts
+- an **Export static HTML** action for `design-app` artifacts
 
 Designs are stored in a visible vault folder chosen by the host, by default `<vault>/Artifacts/<plugin>/<title-slug>/`. The root folder is configurable on the host side, and the host derives the per-plugin namespace from the caller; this plugin passes its own plugin id as `owner` (from which the host derives the namespace) but no namespace or folder root, and hard-codes no folder name. The plugin asks the host for visible storage (`allocateStorage(..., { location: 'visible', folderName })`), where `folderName` is a lowercase kebab-case ASCII slug of the design title (at most 60 characters, falling back to the artifact id). The host sanitizes the name and adds `-2`, `-3`, … on collision, and the plugin always uses the path the host returns. The folder name is only a label: a design's identity is the `id` and `createdByThreadId` in its `artifact.json`, so you can rename the folder in the vault without breaking anything the plugin looks up by identity.
 
@@ -37,6 +38,38 @@ A mode changes the instructions for one design turn. It does not create a new ar
 - `/design storyboard: the signup flow` (or a video brief) builds an ordered frame board that the agent infers is a product flow or a video. Frames live in `storyboard.json` (mirrored to `storyboard.js`, since the artifact CSP blocks fetch) and render as a numbered grid with captions and notes. Flows add trigger and branch labels between frames. Videos add duration, shot, and voiceover plus a total runtime. Reorder frames by drag or arrow keys and edit captions inline; those edits are page-only and are not saved. A `storyboard.md` shot list is written alongside and regenerated on re-run. It can start a new thread.
 
 The colon is required, so `/design states of the union dashboard` is an ordinary brief. In a thread that already has a design, a bare `/design wireframe:`, `/design states:`, `/design variations:`, `/design spec:`, or `/design storyboard:` runs that mode against the existing design. `EnterDesignMode` accepts the same modes through its optional `mode` argument. In an Agent Threads host version that supports argument-completion suggestions, typing `/design ` offers the mode keywords as autocomplete.
+
+## Runtimes
+
+| Runtime | Kind | Files | Preview | `permissions.network` |
+| --- | --- | --- | --- | --- |
+| `static` (default) | `design-static` | `index.html`, `styles.css`, `app.js` | file-backed secure artifact view | `none` |
+| `nextjs` | `design-app` | Next.js 16 (webpack) App Router, TypeScript, Tailwind CSS v4 | local dev server on `127.0.0.1` | `loopback` |
+
+Pick the runtime with `/design --nextjs <brief>` (also `--static`, `--runtime=nextjs`) or the tool's `runtime` argument. Flags go before the mode and brief and compose with modes: `/design --nextjs wireframe: a CRM`. The tool description steers the agent to `nextjs` for multi-page flows, client state, or complete app designs. A thread has one design artifact and its runtime cannot change afterwards. Next.js artifacts live in the same host-allocated artifacts folder as static ones (see storage above); the export goes to `exports/` inside it.
+
+Modes on Next.js: `wireframe:` and `states:` work (the mode instructions are mapped onto `app/page.tsx` and friends). `variations:`, `pick:`, `spec:`, and `storyboard:` depend on static multi-file snapshots, inline-script-free overlays, and JSON script mirrors, so they are static-only and return a clear error for a Next.js design.
+
+### Manifest versions
+
+`artifact.json` `schemaVersion` is **2** for new artifacts (adds `runtime: "nextjs"` and `network: "loopback"`). Version **1** (static-only) artifacts are still read, validated (`parseDesignManifest`), previewed, and revised unchanged.
+
+### Next.js artifacts
+
+The scaffold writes `package.json`, `next.config.mjs` (`output: 'export'`, `trailingSlash`, unoptimized images), `tsconfig.json`, Tailwind/PostCSS config, `app/layout.tsx`, `app/page.tsx`, and an `AGENTS.md` telling the design agent the export rules: mock data and client state only; no route handlers, middleware, Server Actions, `cookies()`/`headers()`, or dynamic segments without `generateStaticParams()`.
+
+Dependencies are not installed per artifact. The pinned set (Next.js 16.4.3) is installed once into a shared cache at `<vault>/.geode/cache/design-nextjs/<hash>/` (the first Next.js design needs network access and takes a while) and each artifact gets a `node_modules` symlink to it. Dev and build run with `--webpack` because Turbopack rejects the symlinked shared `node_modules`. Changing the pinned versions in `src/nextjsTemplate.ts` creates a new cache entry.
+
+**Preview and capture.** A dev-server manager starts `next dev --webpack` on a free `127.0.0.1` port the first time an artifact is previewed or captured, reuses it afterwards, and waits for it to answer HTTP. It stops every server on plugin unload, and any server left idle for 20 minutes (the host contract has no artifact-close event). Startup failures (missing npm, port, compile errors) come back as action warnings with the dev server output. The preview view receives `{ root, url, runtime: 'nextjs' }`; if the host cannot place it, the source is revealed instead.
+
+**Export static HTML.** The card action:
+
+1. scans `app/` for route handlers, middleware, `'use server'`, and dynamic segments missing `generateStaticParams`, and stops with the list if any are found;
+2. runs `next build --webpack` in a throwaway copy of the artifact (so the live dev server is not disturbed);
+3. verifies `out/index.html`, then copies the site to `<artifact>/exports/site/` and zips it to `<artifact>/exports/<id>-static.zip` (`zip`, falling back to `tar -a`; a missing archiver is only a warning);
+4. reveals the folder.
+
+Build failures report the `next build` output tail and the likely cause (server features). The exported pages reference `/_next/...` from the site root, so serve the folder from a web server root (for example `npx serve exports/site`) rather than opening `index.html` from `file://`.
 
 ## Installation
 
